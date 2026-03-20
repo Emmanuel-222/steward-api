@@ -37,6 +37,17 @@ DATABASE_URL=postgresql://postgres:PASSWORD@localhost:5432/stewarddb
 JWT_SECRET=your_jwt_secret
 ```
 
+## Live Demo
+Base URL: `https://steward-api-production.up.railway.app`
+
+Test the API:
+```bash
+curl https://steward-api-production.up.railway.app/auth/login \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@steward.com","password":"admin123"}'
+```
+
 # API Endpoints
 ### Auth
 | Method | Endpoint | Access | Description |
