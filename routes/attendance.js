@@ -7,6 +7,36 @@ const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 
 // Mark a user as present 
+/**
+ * @swagger
+ * /attendance:
+ *   post:
+ *     summary: Mark a user as present for a meeting
+ *     tags: [Attendance]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/MarkAttendanceRequest'
+ *     responses:
+ *       201:
+ *         description: Attendance marked
+ *       400:
+ *         description: Validation failed or attendance already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       404:
+ *         description: User or meeting not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.post('/', authenticate, isAdmin, async (req, res) => {
     const { userId, meetingId } = req.body
     if (!userId || !meetingId) return res.status(400).json({ message: 'All fields are required!' })
@@ -39,6 +69,30 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
 })
 
 // Get attendance for a specific meeting
+/**
+ * @swagger
+ * /attendance/meeting/{meetingId}:
+ *   get:
+ *     summary: Get attendance for a meeting
+ *     tags: [Attendance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: meetingId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Attendance for meeting
+ *       404:
+ *         description: Meeting not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
     const meetingId = Number(req.params.meetingId)
     const meeting = await prisma.meeting.findUnique({
@@ -67,6 +121,30 @@ router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
 })
 
 // Get attendance of specific user 
+/**
+ * @swagger
+ * /attendance/user/{userId}:
+ *   get:
+ *     summary: Get attendance records for a user
+ *     tags: [Attendance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: User attendance summary and records
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
     const userId = Number(req.params.userId)
     const user = await prisma.user.findUnique({

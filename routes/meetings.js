@@ -6,6 +6,24 @@ const { PrismaClient } = require('@prisma/client')
 
 const prisma = new PrismaClient()
 
+/**
+ * @swagger
+ * /meetings:
+ *   get:
+ *     summary: Get all meetings
+ *     tags: [Meetings]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of meetings
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Meeting'
+ */
 router.get('/', authenticate, async (req, res) => {
     const meetings = await prisma.meeting.findMany({
         orderBy: { date: 'desc' }
@@ -13,6 +31,34 @@ router.get('/', authenticate, async (req, res) => {
     res.json(meetings)
 })
 
+/**
+ * @swagger
+ * /meetings/{id}:
+ *   get:
+ *     summary: Get a single meeting
+ *     tags: [Meetings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Meeting details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Meeting'
+ *       404:
+ *         description: Meeting not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/:id', authenticate, async (req, res) => {
     const id = Number(req.params.id)
     const meeting = await prisma.meeting.findUnique({
@@ -22,6 +68,30 @@ router.get('/:id', authenticate, async (req, res) => {
     res.json(meeting)
 })
 
+/**
+ * @swagger
+ * /meetings:
+ *   post:
+ *     summary: Create a meeting
+ *     tags: [Meetings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateMeetingRequest'
+ *     responses:
+ *       201:
+ *         description: Meeting created
+ *       400:
+ *         description: Validation failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.post('/', authenticate, isAdmin, async (req, res) => {
     const { type, date, startTime, cutoffTime } = req.body
     if (!type || !date || !startTime || !cutoffTime) return res.status(400).json({ message: "All fields are required" })
@@ -36,6 +106,36 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
     res.status(201).json({ message: "Meeting created successfully", meetingId: newMeeting })
 })
 
+/**
+ * @swagger
+ * /meetings/{id}:
+ *   patch:
+ *     summary: Update a meeting
+ *     tags: [Meetings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateMeetingRequest'
+ *     responses:
+ *       200:
+ *         description: Meeting updated
+ *       404:
+ *         description: Meeting not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.patch('/:id', authenticate, isAdmin, async (req, res) => {
     const id = Number(req.params.id)
     const { type, date, startTime, cutoffTime } = req.body
@@ -55,6 +155,30 @@ router.patch('/:id', authenticate, isAdmin, async (req, res) => {
     res.json({ message: "Meeting updated successfully!", updatedMeeting })
 })
 
+/**
+ * @swagger
+ * /meetings/{id}:
+ *   delete:
+ *     summary: Delete a meeting
+ *     tags: [Meetings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Meeting deleted
+ *       404:
+ *         description: Meeting not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.delete('/:id', authenticate, isAdmin, async (req, res) => {
     const id = Number(req.params.id)
     const meeting = await prisma.meeting.findUnique({
