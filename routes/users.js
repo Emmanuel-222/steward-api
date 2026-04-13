@@ -48,6 +48,56 @@ router.get("/", authenticate, async (req, res) => {
   res.json(users);
 });
 
+router.get("/search/:name", authenticate, async (req, res) => {
+  const search = req.params.name;
+
+  if (!search || search.trim() === "") {
+    return res.status(400).json({ message: "Search term is required" });
+  }
+
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [
+        {
+          fullName: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          department: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          role: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          phone: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      department: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  res.json(users);
+});
+
 // Get a single user
 /**
  * @swagger
@@ -257,28 +307,6 @@ router.delete("/:id", authenticate, isAdmin, async (req, res) => {
     where: { id },
   });
   res.json({ message: "User deleted successfully" });
-});
-
-router.get("/users/search/:name", authenticate, async (req, res) => {
-  const name = req.params.name;
-  const users = await prisma.user.findMany({
-    where: {
-      fullName: {
-        contains: name,
-        mode: "insensitive",
-      },
-    },
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      phone: true,
-      department: true,
-      role: true,
-      createdAt: true,
-    },
-  });
-  res.json(users);
 });
 
 module.exports = router;

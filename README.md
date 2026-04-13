@@ -59,7 +59,7 @@ curl https://steward-api-production.up.railway.app/auth/login \
 |--------|----------|--------|-------------|
 | GET | /users | Admin | Get all users |
 | GET | /users/:id | Admin | Get single user |
-| GET | /users/search?name= | Admin | Search user by name |
+| GET | /users/search/:name | Admin | Search users by full name, department, role, or phone |
 | POST | /users | Admin | Create new user |
 | PATCH | /users/:id | Admin | Update user |
 | DELETE | /users/:id | Admin | Delete user |
