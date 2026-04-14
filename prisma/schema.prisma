@@ -33,6 +33,7 @@ model Meeting {
   date        DateTime
   startTime   String       // "7:00 AM"
   cutoffTime  String       // "8:30 AM"
+  location    String
   attendance  Attendance[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt

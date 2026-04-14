@@ -93,14 +93,15 @@ router.get('/:id', authenticate, async (req, res) => {
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/', authenticate, isAdmin, async (req, res) => {
-    const { type, date, startTime, cutoffTime } = req.body
-    if (!type || !date || !startTime || !cutoffTime) return res.status(400).json({ message: "All fields are required" })
+    const { type, date, startTime, cutoffTime, location } = req.body
+    if (!type || !date || !startTime || !cutoffTime || !location) return res.status(400).json({ message: "All fields are required" })
     const newMeeting = await prisma.meeting.create({
         data: {
             type,
             date: new Date(date),  //save as a date of the same date type of the db, so that no matter the date from the request body we always save the proper date needed on the db.
             startTime,
-            cutoffTime
+            cutoffTime,
+            location
         }
     })
     res.status(201).json({ message: "Meeting created successfully", meetingId: newMeeting })
@@ -138,7 +139,7 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
  */
 router.patch('/:id', authenticate, isAdmin, async (req, res) => {
     const id = Number(req.params.id)
-    const { type, date, startTime, cutoffTime } = req.body
+    const { type, date, startTime, cutoffTime, location } = req.body
     const meeting = await prisma.meeting.findUnique({
         where: { id }
     })
@@ -149,7 +150,8 @@ router.patch('/:id', authenticate, isAdmin, async (req, res) => {
             type: type || meeting.type,
             date: date ? new Date(date) : meeting.date,
             cutoffTime: cutoffTime || meeting.cutoffTime,
-            startTime: startTime || meeting.startTime
+            startTime: startTime || meeting.startTime,
+            location: location || meeting.location
         }
     })
     res.json({ message: "Meeting updated successfully!", updatedMeeting })
