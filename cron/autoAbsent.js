@@ -4,63 +4,128 @@ const { PrismaClient } = require('@prisma/client')
 const prisma = new PrismaClient()
 
 const autoMarkAbsent = async () => {
-    // create schedule 
+    // Helper to parse "11:20 AM" or "14:05" into a Date object for today
+    const parseTime = (dateBase, timeStr) => {
+        if (!timeStr || typeof timeStr !== 'string') return null;
+        
+        const trimmedTime = timeStr.trim();
+        const match12 = trimmedTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        const match24 = trimmedTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        
+        let hours, minutes;
+
+        if (match12) {
+            let [_, h, m, modifier] = match12;
+            hours = parseInt(h, 10);
+            minutes = parseInt(m, 10);
+            if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+            if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+        } else if (match24) {
+            let [_, h, m] = match24;
+            hours = parseInt(h, 10);
+            minutes = parseInt(m, 10);
+        } else {
+            return null;
+        }
+
+        const date = new Date(dateBase);
+        date.setHours(hours, minutes, 0, 0);
+        return date;
+    };
+
+    // Run every minute
     cron.schedule('* * * * *', async () => {
-        console.log('running every minute of every hour, every day of the month')
+        const now = new Date();
+        console.log(`[Cron] Checking for expired cutoffs at ${now.toLocaleTimeString()}`);
 
-        // Create the 24 hour interval 
-        const today = new Date()  //get the present date
-        today.setHours(0, 0, 0, 0)  //set the hour of the day to 12:00 am starting of that day
-        const tomorrow = new Date(today)  // set tomorrow to today, then
-        tomorrow.setDate(tomorrow.getDate() + 1)  // make the date one day ahead of today but on the same hour.
+        // Define today's range (local time)
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const tomorrowStart = new Date(todayStart);
+        tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
-        const meeting = await prisma.meeting.findFirst({
-            where: {
-                date: { gte: today, lt: tomorrow },  //chck for date greater or equal to today var and less than tomorrow which make 24 hours, you get.
-                type: 'Sunday'
-            },
-            orderBy: { createdAt: 'desc' }
-        })
+        try {
+            // Find all meetings scheduled for today
+            const meetings = await prisma.meeting.findMany({
+                where: {
+                    date: {
+                        gte: todayStart,
+                        lt: tomorrowStart
+                    }
+                }
+            });
 
-        if (!meeting) {
-            console.log('No Sunday meeting found for today')
-            return
-        }
-        const meetingCutOffTime = new Date(meeting.cutoffTime)
-        console.log(meetingCutOffTime)
-
-        // get all users that should attend -- which include all role except the admin
-        const allUsers = await prisma.user.findMany({
-            where: {
-                role: { in: ['steward', 'pastor', 'leader'] }
+            if (meetings.length === 0) {
+                console.log('[Cron] No meetings found for today');
+                return;
             }
-        })
 
-        // get all users who have been marked present or absent
-        const markedAttendance = await prisma.attendance.findMany({
-            where: { meetingId: meeting.id }
-        })
-        const markedUserId = markedAttendance.map(attendance => attendance.userId)  //we do this because only users id showing on the attendance for this particular meeting is here.
+            for (const meeting of meetings) {
+                const cutoffDate = parseTime(meeting.date, meeting.cutoffTime);
+                
+                if (!cutoffDate) {
+                    console.error(`[Cron] Could not parse cutoffTime "${meeting.cutoffTime}" for meeting ID ${meeting.id}`);
+                    continue;
+                }
 
-        const unmarkedUsers = allUsers.filter(user => !markedUserId.includes(user.id))  //put in a new array 'unmarkedUsers' all user's id not included in the array holding all user's id marked prsent or absent.
+                // Check if we have passed the cutoff time
+                if (now < cutoffDate) {
+                    console.log(`[Cron] Meeting "${meeting.type}" cutoff (${meeting.cutoffTime}) not yet reached.`);
+                    continue;
+                }
 
-        if (unmarkedUsers.length === 0) {
-            console.log('All users already marked for this meeting')
-            return
+                console.log(`[Cron] Processing absences for meeting: ${meeting.type} (ID: ${meeting.id})`);
+
+                // Get all users who should be tracked (non-admins)
+                const targetUsers = await prisma.user.findMany({
+                    where: {
+                        OR: [
+                            { role: { equals: 'steward', mode: 'insensitive' } },
+                            { role: { equals: 'pastor', mode: 'insensitive' } },
+                            { role: { equals: 'leader', mode: 'insensitive' } }
+                        ]
+                    }
+                });
+
+                console.log(`[Cron] Found ${targetUsers.length} target users to check.`);
+                if (targetUsers.length > 0) {
+                    console.log(`[Cron] Target users: ${targetUsers.map(u => `${u.email} (${u.role})`).join(', ')}`);
+                }
+
+                // Get existing attendance for this meeting
+                const markedAttendance = await prisma.attendance.findMany({
+                    where: { meetingId: meeting.id },
+                    select: { userId: true }
+                });
+                
+                const markedUserIds = markedAttendance.map(a => a.userId);
+
+                // Filter for users not yet marked
+                const unmarkedUsers = targetUsers.filter(user => !markedUserIds.includes(user.id));
+
+                if (unmarkedUsers.length === 0) {
+                    console.log(`[Cron] All ${targetUsers.length} target users already accounted for in meeting ${meeting.id}`);
+                    continue;
+                }
+
+                // Mark them absent
+                const absentRecords = unmarkedUsers.map(user => ({
+                    userId: user.id,
+                    meetingId: meeting.id,
+                    status: 'absent',
+                    markedAt: new Date()
+                }));
+
+                await prisma.attendance.createMany({
+                    data: absentRecords
+                });
+
+                console.log(`[Cron] Successfully marked ${absentRecords.length} users as absent for meeting ${meeting.id}`);
+            }
+        } catch (error) {
+            console.error('[Cron] Error in autoMarkAbsent:', error);
         }
-
-        // create a record matching our attendance schema, but with absent users
-        const absentRecords = unmarkedUsers.map((user) => ({
-            userId: user.id,
-            meetingId: meeting.id,
-            status: 'absent',
-            markedAt: new Date()
-        }))
-
-        await prisma.attendance.createMany({
-            data: absentRecords
-        })
-    })
-}
+    });
+};
 
 module.exports = autoMarkAbsent
