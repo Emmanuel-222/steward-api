@@ -50,4 +50,6 @@ model Attendance {
   user        User     @relation(fields: [userId], references: [id])
   meeting     Meeting  @relation(fields: [meetingId], references: [id])
   createdAt   DateTime @default(now())
+
+  @@unique([userId, meetingId])
 }

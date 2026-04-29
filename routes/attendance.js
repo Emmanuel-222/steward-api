@@ -6,12 +6,12 @@ const { PrismaClient } = require('@prisma/client')
 
 const prisma = new PrismaClient()
 
-// Mark a user as present 
+// Mark a user as present/absent for a meeting
 /**
  * @swagger
  * /attendance:
  *   post:
- *     summary: Mark a user as present for a meeting
+ *     summary: Mark a user as present or absent for a meeting
  *     tags: [Attendance]
  *     security:
  *       - bearerAuth: []
@@ -23,83 +23,66 @@ const prisma = new PrismaClient()
  *             $ref: '#/components/schemas/MarkAttendanceRequest'
  *     responses:
  *       201:
- *         description: Attendance marked
+ *         description: Attendance marked successfully
+ *       200:
+ *         description: Attendance updated successfully
  *       400:
- *         description: Validation failed or attendance already exists
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         description: Validation failed
  *       404:
  *         description: User or meeting not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/', authenticate, isAdmin, async (req, res) => {
-    const { userId, meetingId } = req.body
-    if (!userId || !meetingId) return res.status(400).json({ message: 'All fields are required!' })
-    // check if user exist  
-    const existingUser = await prisma.user.findUnique({ where: { id: Number(userId) } })
-    if (!existingUser) return res.status(404).json({ message: 'User not found' })
-    //check if meeting exist
-    const meeting = await prisma.meeting.findUnique({ where: { id: Number(meetingId) } })
-    if (!meeting) return res.status(404).json({ message: "Meeting not found" })
+    try {
+        const { userId, meetingId, status } = req.body
+        if (!userId || !meetingId) return res.status(400).json({ message: 'All fields are required!' })
+        
+        // check if user exist  
+        const existingUser = await prisma.user.findUnique({ where: { id: Number(userId) } })
+        if (!existingUser) return res.status(404).json({ message: 'User not found' })
+        
+        //check if meeting exist
+        const meeting = await prisma.meeting.findUnique({ where: { id: Number(meetingId) } })
+        if (!meeting) return res.status(404).json({ message: "Meeting not found" })
 
-    // Check if this attendance match any on our database
-    const existingAttendance = await prisma.attendance.findFirst({
-        where: {
-            userId: Number(userId),
-            meetingId: Number(meetingId)
-        }
-    })
-    if (existingAttendance) return res.status(400).json({ message: 'Attendance already marked for this user' })
+        // Use upsert to create or update attendance status
+        const attendance = await prisma.attendance.upsert({
+            where: {
+                userId_meetingId: {
+                    userId: Number(userId),
+                    meetingId: Number(meetingId)
+                }
+            },
+            update: {
+                status: status || "present",
+                markedAt: new Date()
+            },
+            create: {
+                userId: Number(userId),
+                meetingId: Number(meetingId),
+                status: status || "present",
+                markedAt: new Date()
+            }
+        })
 
-    // mark the user present for this specific meeting.
-    const attendance = await prisma.attendance.create({
-        data: {
-            userId: Number(userId),
-            meetingId: Number(meetingId),
-            markedAt: new Date(),
-            status: "present",
-        }
-    })
-    res.status(201).json({ message: "Attendance marked as present", attendance })
+        const statusCode = attendance.createdAt === attendance.updatedAt ? 201 : 200;
+        res.status(statusCode).json({ 
+            message: `Steward marked as ${status || "present"}`, 
+            attendance 
+        })
+    } catch (error) {
+        console.error('Mark attendance error:', error);
+        res.status(500).json({ message: "Internal server error" });
+    }
 })
 
 // Get attendance for a specific meeting
-/**
- * @swagger
- * /attendance/meeting/{meetingId}:
- *   get:
- *     summary: Get attendance for a meeting
- *     tags: [Attendance]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: meetingId
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Attendance for meeting
- *       404:
- *         description: Meeting not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
 router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
     const meetingId = Number(req.params.meetingId)
     const meeting = await prisma.meeting.findUnique({
         where: { id: meetingId }
     })
     if (!meeting) return res.status(404).json({ message: "Meeting not found" })
-    const attendance = await prisma.attendance.findMany({  // findFirst looks for the first attendance with the meeting id we have provided 
+    const attendance = await prisma.attendance.findMany({
         where: { meetingId },
         include: {
             user: {
@@ -121,36 +104,9 @@ router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
 })
 
 // Get attendance of specific user 
-/**
- * @swagger
- * /attendance/user/{userId}:
- *   get:
- *     summary: Get attendance records for a user
- *     tags: [Attendance]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: User attendance summary and records
- *       404:
- *         description: User not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
 router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
     const userId = Number(req.params.userId)
-    const user = await prisma.user.findUnique({
-        where: {
-            id: userId
-        },
+    const user = await prisma.user.findUnique({ where: { id: userId },
         select: {
             id: true,
             fullName: true,
@@ -162,11 +118,9 @@ router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
         }
     })
     if (!user) return res.status(404).json({ message: "User not found" })
-    const attendance = await prisma.attendance.findMany({  // findMany looks for all the userid matching ours on the attendance
+    const attendance = await prisma.attendance.findMany({
         where: { userId },
-        include: {
-            meeting: true
-        },
+        include: { meeting: true },
         orderBy: { createdAt: 'desc' }
     })
     const total = attendance.length
@@ -178,25 +132,8 @@ router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
         records: attendance
     })
 })
+
 // Finalize meeting attendance
-/**
- * @swagger
- * /attendance/finalize/{meetingId}:
- *   post:
- *     summary: Finalize attendance for a meeting (marks unmarked stewards as absent)
- *     tags: [Attendance]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: meetingId
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Session finalized successfully
- */
 router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
     try {
         const meetingId = Number(req.params.meetingId)
@@ -205,7 +142,6 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
         })
         if (!meeting) return res.status(404).json({ message: "Meeting not found" })
 
-        // Get all target users (non-admins)
         const targetUsers = await prisma.user.findMany({
             where: {
                 OR: [
@@ -216,19 +152,15 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
             }
         });
 
-        // Get existing attendance for this meeting
         const existingAttendance = await prisma.attendance.findMany({
             where: { meetingId },
             select: { userId: true, status: true }
         });
         
         const markedUserIds = existingAttendance.map(a => a.userId);
-
-        // Filter for users not yet marked
         const unmarkedUsers = targetUsers.filter(user => !markedUserIds.includes(user.id));
 
         if (unmarkedUsers.length > 0) {
-            // Mark them absent
             const absentRecords = unmarkedUsers.map(user => ({
                 userId: user.id,
                 meetingId,
@@ -241,7 +173,6 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
             });
         }
 
-        // Update meeting status to Finalized
         await prisma.meeting.update({
             where: { id: meetingId },
             data: { status: 'Finalized' }
