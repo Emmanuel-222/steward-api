@@ -46,6 +46,7 @@ router.get('/', authenticate, async (req, res) => {
             cutoffTime: meeting.cutoffTime,
             endTime: meeting.endTime,
             location: meeting.location,
+            status: meeting.status,
             createdAt: meeting.createdAt,
             presentCount,
             absentCount
@@ -106,6 +107,7 @@ router.get('/:id', authenticate, async (req, res) => {
         cutoffTime: meeting.cutoffTime,
         endTime: meeting.endTime,
         location: meeting.location,
+        status: meeting.status,
         createdAt: meeting.createdAt,
         presentCount,
         absentCount

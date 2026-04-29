@@ -178,4 +178,91 @@ router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
         records: attendance
     })
 })
+// Finalize meeting attendance
+/**
+ * @swagger
+ * /attendance/finalize/{meetingId}:
+ *   post:
+ *     summary: Finalize attendance for a meeting (marks unmarked stewards as absent)
+ *     tags: [Attendance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: meetingId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Session finalized successfully
+ */
+router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
+    try {
+        const meetingId = Number(req.params.meetingId)
+        const meeting = await prisma.meeting.findUnique({
+            where: { id: meetingId }
+        })
+        if (!meeting) return res.status(404).json({ message: "Meeting not found" })
+
+        // Get all target users (non-admins)
+        const targetUsers = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { role: { equals: 'steward', mode: 'insensitive' } },
+                    { role: { equals: 'pastor', mode: 'insensitive' } },
+                    { role: { equals: 'leader', mode: 'insensitive' } }
+                ]
+            }
+        });
+
+        // Get existing attendance for this meeting
+        const existingAttendance = await prisma.attendance.findMany({
+            where: { meetingId },
+            select: { userId: true, status: true }
+        });
+        
+        const markedUserIds = existingAttendance.map(a => a.userId);
+
+        // Filter for users not yet marked
+        const unmarkedUsers = targetUsers.filter(user => !markedUserIds.includes(user.id));
+
+        if (unmarkedUsers.length > 0) {
+            // Mark them absent
+            const absentRecords = unmarkedUsers.map(user => ({
+                userId: user.id,
+                meetingId,
+                status: 'absent',
+                markedAt: new Date()
+            }));
+
+            await prisma.attendance.createMany({
+                data: absentRecords
+            });
+        }
+
+        // Update meeting status to Finalized
+        await prisma.meeting.update({
+            where: { id: meetingId },
+            data: { status: 'Finalized' }
+        });
+
+        const finalPresent = existingAttendance.filter(a => a.status === 'present').length;
+        const finalAbsent = existingAttendance.filter(a => a.status === 'absent').length + unmarkedUsers.length;
+
+        res.json({ 
+            message: "Session finalized successfully",
+            summary: {
+                total: targetUsers.length,
+                present: finalPresent,
+                absent: finalAbsent,
+                performance: targetUsers.length > 0 ? Math.round((finalPresent / targetUsers.length) * 100) : 0
+            }
+        })
+    } catch (error) {
+        console.error('Finalize error:', error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+})
+
 module.exports = router
