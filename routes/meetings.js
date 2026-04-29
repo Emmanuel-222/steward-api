@@ -26,9 +26,33 @@ const prisma = new PrismaClient()
  */
 router.get('/', authenticate, async (req, res) => {
     const meetings = await prisma.meeting.findMany({
-        orderBy: { date: 'desc' }
+        orderBy: { date: 'desc' },
+        include: {
+            attendance: {
+                select: { status: true }
+            }
+        }
     })
-    res.json(meetings)
+
+    const meetingsWithCounts = meetings.map(meeting => {
+        const presentCount = meeting.attendance.filter(a => a.status === 'present').length
+        const absentCount = meeting.attendance.filter(a => a.status === 'absent').length
+        
+        return {
+            id: meeting.id,
+            type: meeting.type,
+            date: meeting.date,
+            startTime: meeting.startTime,
+            cutoffTime: meeting.cutoffTime,
+            endTime: meeting.endTime,
+            location: meeting.location,
+            createdAt: meeting.createdAt,
+            presentCount,
+            absentCount
+        }
+    })
+
+    res.json(meetingsWithCounts)
 })
 
 /**
@@ -62,10 +86,30 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/:id', authenticate, async (req, res) => {
     const id = Number(req.params.id)
     const meeting = await prisma.meeting.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+            attendance: {
+                select: { status: true }
+            }
+        }
     })
     if (!meeting) return res.status(404).json({ message: "Meeting not found" })
-    res.json(meeting)
+    
+    const presentCount = meeting.attendance.filter(a => a.status === 'present').length
+    const absentCount = meeting.attendance.filter(a => a.status === 'absent').length
+    
+    res.json({
+        id: meeting.id,
+        type: meeting.type,
+        date: meeting.date,
+        startTime: meeting.startTime,
+        cutoffTime: meeting.cutoffTime,
+        endTime: meeting.endTime,
+        location: meeting.location,
+        createdAt: meeting.createdAt,
+        presentCount,
+        absentCount
+    })
 })
 
 /**
