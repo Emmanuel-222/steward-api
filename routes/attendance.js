@@ -44,6 +44,29 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
         const meeting = await prisma.meeting.findUnique({ where: { id: Number(meetingId) } })
         if (!meeting) return res.status(404).json({ message: "Meeting not found" })
 
+        // check if it's late
+        let finalStatus = status || "present"
+        if (finalStatus === "present") {
+            const trimmedTime = meeting.cutoffTime.trim();
+            const timeMatch = trimmedTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+            
+            if (timeMatch) {
+                let [_, h, m, modifier] = timeMatch;
+                let hours = parseInt(h, 10);
+                const minutes = parseInt(m, 10);
+                
+                if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+                if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+
+                const cutoff = new Date(meeting.date);
+                cutoff.setHours(hours, minutes, 0, 0);
+
+                if (new Date() > cutoff) {
+                finalStatus = "late"
+            }
+          }
+        }
+
         // Use upsert to create or update attendance status
         const attendance = await prisma.attendance.upsert({
             where: {
@@ -53,20 +76,20 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
                 }
             },
             update: {
-                status: status || "present",
+                status: finalStatus,
                 markedAt: new Date()
             },
             create: {
                 userId: Number(userId),
                 meetingId: Number(meetingId),
-                status: status || "present",
+                status: finalStatus,
                 markedAt: new Date()
             }
         })
 
         const statusCode = attendance.createdAt === attendance.updatedAt ? 201 : 200;
         res.status(statusCode).json({ 
-            message: `Steward marked as ${status || "present"}`, 
+            message: `Steward marked as ${finalStatus}`, 
             attendance 
         })
     } catch (error) {
@@ -97,8 +120,9 @@ router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
     })
     res.json({
         meeting,
-        totalPresent: attendance.filter(markedPresent => markedPresent.status === 'present').length,
-        totalAbsent: attendance.filter(markedAbsent => markedAbsent.status === 'absent').length,
+        totalPresent: attendance.filter(a => a.status === 'present' || a.status === 'late').length,
+        totalLate: attendance.filter(a => a.status === 'late').length,
+        totalAbsent: attendance.filter(a => a.status === 'absent').length,
         attendance
     })
 })
@@ -124,11 +148,12 @@ router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
         orderBy: { createdAt: 'desc' }
     })
     const total = attendance.length
-    const present = attendance.filter(markedPresent => markedPresent.status === 'present').length
-    const absent = attendance.filter(markedAbsent => markedAbsent.status === 'absent').length
+    const present = attendance.filter(a => a.status === 'present' || a.status === 'late').length
+    const late = attendance.filter(a => a.status === 'late').length
+    const absent = attendance.filter(a => a.status === 'absent').length
     res.json({
         user,
-        summary: { total, present, absent },
+        summary: { total, present, late, absent },
         records: attendance
     })
 })
@@ -178,7 +203,8 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
             data: { status: 'Finalized' }
         });
 
-        const finalPresent = existingAttendance.filter(a => a.status === 'present').length;
+        const finalPresent = existingAttendance.filter(a => a.status === 'present' || a.status === 'late').length;
+        const finalLate = existingAttendance.filter(a => a.status === 'late').length;
         const finalAbsent = existingAttendance.filter(a => a.status === 'absent').length + unmarkedUsers.length;
 
         res.json({ 
@@ -186,6 +212,7 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
             summary: {
                 total: targetUsers.length,
                 present: finalPresent,
+                late: finalLate,
                 absent: finalAbsent,
                 performance: targetUsers.length > 0 ? Math.round((finalPresent / targetUsers.length) * 100) : 0
             }

@@ -61,20 +61,20 @@ const autoMarkAbsent = async () => {
             }
 
             for (const meeting of meetings) {
-                const cutoffDate = parseTime(meeting.date, meeting.cutoffTime);
+                const endDateTime = parseTime(meeting.date, meeting.endTime);
                 
-                if (!cutoffDate) {
-                    console.error(`[Cron] Could not parse cutoffTime "${meeting.cutoffTime}" for meeting ID ${meeting.id}`);
+                if (!endDateTime) {
+                    console.error(`[Cron] Could not parse endTime "${meeting.endTime}" for meeting ID ${meeting.id}`);
                     continue;
                 }
 
-                // Check if we have passed the cutoff time
-                if (now < cutoffDate) {
-                    console.log(`[Cron] Meeting "${meeting.type}" cutoff (${meeting.cutoffTime}) not yet reached.`);
+                // Check if we have passed the end time
+                if (now < endDateTime) {
+                    console.log(`[Cron] Meeting "${meeting.type}" (ID: ${meeting.id}) end time (${meeting.endTime}) not yet reached.`);
                     continue;
                 }
 
-                console.log(`[Cron] Processing absences for meeting: ${meeting.type} (ID: ${meeting.id})`);
+                console.log(`[Cron] Processing absences for meeting: ${meeting.type} (ID: ${meeting.id}) after end time.`);
 
                 // Get all users who should be tracked (non-admins)
                 const targetUsers = await prisma.user.findMany({

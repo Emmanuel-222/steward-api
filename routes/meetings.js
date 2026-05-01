@@ -35,7 +35,8 @@ router.get('/', authenticate, async (req, res) => {
     })
 
     const meetingsWithCounts = meetings.map(meeting => {
-        const presentCount = meeting.attendance.filter(a => a.status === 'present').length
+        const presentCount = meeting.attendance.filter(a => a.status === 'present' || a.status === 'late').length
+        const lateCount = meeting.attendance.filter(a => a.status === 'late').length
         const absentCount = meeting.attendance.filter(a => a.status === 'absent').length
         
         return {
@@ -49,6 +50,7 @@ router.get('/', authenticate, async (req, res) => {
             status: meeting.status,
             createdAt: meeting.createdAt,
             presentCount,
+            lateCount,
             absentCount
         }
     })
@@ -96,7 +98,8 @@ router.get('/:id', authenticate, async (req, res) => {
     })
     if (!meeting) return res.status(404).json({ message: "Meeting not found" })
     
-    const presentCount = meeting.attendance.filter(a => a.status === 'present').length
+    const presentCount = meeting.attendance.filter(a => a.status === 'present' || a.status === 'late').length
+    const lateCount = meeting.attendance.filter(a => a.status === 'late').length
     const absentCount = meeting.attendance.filter(a => a.status === 'absent').length
     
     res.json({
@@ -110,6 +113,7 @@ router.get('/:id', authenticate, async (req, res) => {
         status: meeting.status,
         createdAt: meeting.createdAt,
         presentCount,
+        lateCount,
         absentCount
     })
 })
