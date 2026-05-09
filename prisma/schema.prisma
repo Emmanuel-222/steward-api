@@ -23,12 +23,14 @@ model User {
   role        String       // "admin", "pastor", "leader", "steward"
   password    String
   attendance  Attendance[]
+  excuses     ExcuseRequest[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
 
 model Meeting {
   id          Int          @id @default(autoincrement())
+  title       String
   type        String       // "Sunday", "Special"
   date        DateTime
   startTime   String       // "7:00 AM"
@@ -37,6 +39,7 @@ model Meeting {
   location    String
   status      String       @default("Ongoing") // "Ongoing", "Finalized"
   attendance  Attendance[]
+  excuses     ExcuseRequest[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -49,7 +52,23 @@ model Attendance {
   meetingId   Int
   user        User     @relation(fields: [userId], references: [id])
   meeting     Meeting  @relation(fields: [meetingId], references: [id])
+  excuseRequestId Int?
+  excuseRequest   ExcuseRequest? @relation(fields: [excuseRequestId], references: [id])
   createdAt   DateTime @default(now())
 
   @@unique([userId, meetingId])
+}
+
+model ExcuseRequest {
+  id           Int      @id @default(autoincrement())
+  reason       String
+  status       String   @default("Pending") // "Pending", "Approved", "Rejected"
+  adminComment String?
+  stewardId    Int
+  meetingId    Int
+  steward      User     @relation(fields: [stewardId], references: [id])
+  meeting      Meeting  @relation(fields: [meetingId], references: [id])
+  attendance   Attendance[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

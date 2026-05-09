@@ -33,9 +33,16 @@ const isAdmin = require("../middleware/isAdmin");
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get("/", authenticate, async (req, res) => {
+  const { role, department } = req.user;
+  
+  let whereClause = {};
+  if (role?.toLowerCase() === 'leader') {
+    whereClause = { department: department };
+  }
+
   const users = await prisma.user.findMany({
+    where: whereClause,
     select: {
-      //to select specific value from the user table on my Database
       id: true,
       fullName: true,
       email: true,
@@ -43,7 +50,7 @@ router.get("/", authenticate, async (req, res) => {
       department: true,
       role: true,
       createdAt: true,
-    }, //In this place we return all the useful data execpt password, even though password is hashed
+    },
   });
   res.json(users);
 });

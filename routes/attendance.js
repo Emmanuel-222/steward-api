@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
+const isAuthorized = require('../middleware/isAuthorized')
 const { PrismaClient } = require('@prisma/client')
 
 const prisma = new PrismaClient()
@@ -31,14 +32,21 @@ const prisma = new PrismaClient()
  *       404:
  *         description: User or meeting not found
  */
-router.post('/', authenticate, isAdmin, async (req, res) => {
+router.post('/', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
     try {
         const { userId, meetingId, status } = req.body
+        const { role, department } = req.user
+
         if (!userId || !meetingId) return res.status(400).json({ message: 'All fields are required!' })
         
         // check if user exist  
         const existingUser = await prisma.user.findUnique({ where: { id: Number(userId) } })
         if (!existingUser) return res.status(404).json({ message: 'User not found' })
+        
+        // If leader, ensure they are marking someone in their department
+        if (role?.toLowerCase() === 'leader' && existingUser.department !== department) {
+            return res.status(403).json({ message: 'You can only mark attendance for stewards in your department' })
+        }
         
         //check if meeting exist
         const meeting = await prisma.meeting.findUnique({ where: { id: Number(meetingId) } })
@@ -99,14 +107,24 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
 })
 
 // Get attendance for a specific meeting
-router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
+router.get('/meeting/:meetingId', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
     const meetingId = Number(req.params.meetingId)
+    const { role, department } = req.user
+
     const meeting = await prisma.meeting.findUnique({
         where: { id: meetingId }
     })
     if (!meeting) return res.status(404).json({ message: "Meeting not found" })
+
+    let attendanceWhere = { meetingId }
+    if (role?.toLowerCase() === 'leader') {
+        attendanceWhere.user = {
+            department: department
+        }
+    }
+
     const attendance = await prisma.attendance.findMany({
-        where: { meetingId },
+        where: attendanceWhere,
         include: {
             user: {
                 select: {
@@ -114,6 +132,11 @@ router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
                     fullName: true,
                     department: true,
                     role: true
+                }
+            },
+            excuseRequest: {
+                select: {
+                    reason: true
                 }
             }
         }
@@ -123,6 +146,7 @@ router.get('/meeting/:meetingId', authenticate, isAdmin, async (req, res) => {
         totalPresent: attendance.filter(a => a.status === 'present' || a.status === 'late').length,
         totalLate: attendance.filter(a => a.status === 'late').length,
         totalAbsent: attendance.filter(a => a.status === 'absent').length,
+        totalExcused: attendance.filter(a => a.status === 'excused').length,
         attendance
     })
 })
@@ -151,9 +175,10 @@ router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
     const present = attendance.filter(a => a.status === 'present' || a.status === 'late').length
     const late = attendance.filter(a => a.status === 'late').length
     const absent = attendance.filter(a => a.status === 'absent').length
+    const excused = attendance.filter(a => a.status === 'excused').length
     res.json({
         user,
-        summary: { total, present, late, absent },
+        summary: { total, present, late, absent, excused },
         records: attendance
     })
 })
@@ -205,6 +230,7 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
 
         const finalPresent = existingAttendance.filter(a => a.status === 'present' || a.status === 'late').length;
         const finalLate = existingAttendance.filter(a => a.status === 'late').length;
+        const finalExcused = existingAttendance.filter(a => a.status === 'excused').length;
         const finalAbsent = existingAttendance.filter(a => a.status === 'absent').length + unmarkedUsers.length;
 
         res.json({ 
@@ -214,12 +240,134 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
                 present: finalPresent,
                 late: finalLate,
                 absent: finalAbsent,
+                excused: finalExcused,
                 performance: targetUsers.length > 0 ? Math.round((finalPresent / targetUsers.length) * 100) : 0
             }
         })
     } catch (error) {
         console.error('Finalize error:', error);
         res.status(500).json({ message: "Internal server error" });
+    }
+})
+
+// --- Excuse Request Routes ---
+
+// Submit an excuse (Steward)
+router.post('/excuse', authenticate, async (req, res) => {
+    try {
+        const { meetingId, reason } = req.body
+        const stewardId = req.user.userId // Corrected from req.user.id to match JWT payload
+
+        if (!meetingId || !reason) {
+            return res.status(400).json({ message: 'Meeting ID and reason are required' })
+        }
+
+        const request = await prisma.excuseRequest.create({
+            data: {
+                stewardId,
+                meetingId: Number(meetingId),
+                reason,
+                status: 'Pending'
+            }
+        })
+
+        res.status(201).json({ message: 'Excuse request submitted successfully', request })
+    } catch (error) {
+        console.error('Submit excuse error:', error)
+        res.status(500).json({ message: 'Internal server error' })
+    }
+})
+
+// Get pending excuses (Admin/Pastor/Leader)
+router.get('/excuse/pending', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
+    try {
+        const { role, department } = req.user
+        
+        let whereClause = { status: 'Pending' }
+        
+        // If leader, only show requests from their department
+        if (role?.toLowerCase() === 'leader') {
+            whereClause.steward = {
+                department: department
+            }
+        }
+
+        const pending = await prisma.excuseRequest.findMany({
+            where: whereClause,
+            include: {
+                steward: {
+                    select: { fullName: true, department: true }
+                },
+                meeting: {
+                    select: { type: true, date: true }
+                }
+            }
+        })
+        res.json(pending)
+    } catch (error) {
+        console.error('Get pending excuses error:', error)
+        res.status(500).json({ message: 'Internal server error' })
+    }
+})
+
+// Resolve excuse request (Admin/Pastor/Leader)
+router.patch('/excuse/:id', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
+    try {
+        const id = Number(req.params.id)
+        const { status, adminComment } = req.body
+        const { role, department } = req.user
+
+        if (!['Approved', 'Rejected'].includes(status)) {
+            return res.status(400).json({ message: 'Invalid status' })
+        }
+
+        const excuseRequest = await prisma.excuseRequest.findUnique({
+            where: { id },
+            include: { steward: true }
+        })
+
+        if (!excuseRequest) {
+            return res.status(404).json({ message: 'Request not found' })
+        }
+
+        // If leader, ensure they are resolving a request from their own department
+        if (role?.toLowerCase() === 'leader' && excuseRequest.steward.department !== department) {
+            return res.status(403).json({ message: 'You can only resolve requests from your own department' })
+        }
+
+        const updatedRequest = await prisma.excuseRequest.update({
+            where: { id },
+            data: { status, adminComment }
+        })
+
+        // If approved, update attendance table
+        if (status === 'Approved') {
+            await prisma.attendance.upsert({
+                where: {
+                    userId_meetingId: {
+                        userId: excuseRequest.stewardId,
+                        meetingId: excuseRequest.meetingId
+                    }
+                },
+                update: { 
+                    status: 'excused', 
+                    markedAt: new Date(),
+                    excuseRequestId: excuseRequest.id
+                },
+                create: {
+                    userId: excuseRequest.stewardId,
+                    meetingId: excuseRequest.meetingId,
+                    status: 'excused',
+                    markedAt: new Date(),
+                    excuseRequestId: excuseRequest.id
+                }
+            })
+        }
+
+        res.json({ message: `Excuse request ${status.toLowerCase()}`, request: updatedRequest })
+    } catch (error) {
+        console.error('Resolve excuse error:', error)
+        res.status(500).json({ message: 'Internal server error' })
     }
 })
 

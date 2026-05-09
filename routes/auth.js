@@ -55,7 +55,12 @@ router.post('/login', async (req, res) => {
     }
     //WHen the password which is the last thing to check when login in is correct, then we sign a token from the server for that user contain things we will define when signing.
     const token = jwt.sign(
-        { userId: existingUser.id, email: existingUser.email, role: existingUser.role },  //payload sent 
+        { 
+            userId: existingUser.id, 
+            email: existingUser.email, 
+            role: existingUser.role,
+            department: existingUser.department 
+        },  //payload sent 
         JWT_SECRET,   
         { expiresIn: '24h' }   //time for token to expire 
     )
@@ -66,7 +71,8 @@ router.post('/login', async (req, res) => {
             id: existingUser.id,
             email: existingUser.email,
             name: existingUser.fullName,
-            role: existingUser.role
+            role: existingUser.role,
+            department: existingUser.department
         }
     })
 })
