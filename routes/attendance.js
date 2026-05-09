@@ -107,7 +107,7 @@ router.post('/', authenticate, isAuthorized(['admin', 'leader', 'pastor']), asyn
 })
 
 // Get attendance for a specific meeting
-router.get('/meeting/:meetingId', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
+router.get('/meeting/:meetingId', authenticate, async (req, res) => {
     const meetingId = Number(req.params.meetingId)
     const { role, department } = req.user
 
@@ -117,10 +117,14 @@ router.get('/meeting/:meetingId', authenticate, isAuthorized(['admin', 'leader',
     if (!meeting) return res.status(404).json({ message: "Meeting not found" })
 
     let attendanceWhere = { meetingId }
-    if (role?.toLowerCase() === 'leader') {
+    const lowerRole = role?.toLowerCase()
+    
+    if (lowerRole === 'leader') {
         attendanceWhere.user = {
             department: department
         }
+    } else if (lowerRole === 'steward') {
+        attendanceWhere.userId = req.user.userId
     }
 
     const attendance = await prisma.attendance.findMany({
@@ -152,8 +156,13 @@ router.get('/meeting/:meetingId', authenticate, isAuthorized(['admin', 'leader',
 })
 
 // Get attendance of specific user 
-router.get('/user/:userId', authenticate, isAdmin, async (req, res) => {
+router.get('/user/:userId', authenticate, async (req, res) => {
     const userId = Number(req.params.userId)
+    
+    // Allow admins to see anyone, but regular users can only see themselves
+    if (req.user.role?.toLowerCase() !== 'admin' && req.user.userId !== userId) {
+        return res.status(403).json({ message: "You can only view your own attendance records." })
+    }
     const user = await prisma.user.findUnique({ where: { id: userId },
         select: {
             id: true,
