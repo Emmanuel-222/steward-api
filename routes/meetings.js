@@ -143,19 +143,21 @@ router.get('/:id', authenticate, async (req, res) => {
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/', authenticate, isAdmin, async (req, res) => {
-    const { type, date, startTime, cutoffTime, location, endTime } = req.body
-    if (!type || !date || !startTime || !cutoffTime || !location || !endTime) return res.status(400).json({ message: "All fields are required" })
+    const { title, type, date, startTime, cutoffTime, location, endTime } = req.body
+    if (!title || !type || !date || !startTime || !cutoffTime || !location || !endTime) return res.status(400).json({ message: "All fields are required" })
     const newMeeting = await prisma.meeting.create({
         data: {
+            title,
             type,
             date: new Date(date),  //save as a date of the same date type of the db, so that no matter the date from the request body we always save the proper date needed on the db.
             startTime,
             cutoffTime,
             endTime,
-            location
+            location,
+            status: 'Ongoing' // Default status for new meetings
         }
     })
-    res.status(201).json({ message: "Meeting created successfully", meetingId: newMeeting })
+    res.status(201).json({ message: "Meeting created successfully", meeting: newMeeting })
 })
 
 /**
@@ -190,7 +192,7 @@ router.post('/', authenticate, isAdmin, async (req, res) => {
  */
 router.patch('/:id', authenticate, isAdmin, async (req, res) => {
     const id = Number(req.params.id)
-    const { type, date, startTime, cutoffTime, location, endTime } = req.body
+    const { title, type, date, startTime, cutoffTime, location, endTime, status } = req.body
     const meeting = await prisma.meeting.findUnique({
         where: { id }
     })
@@ -198,12 +200,14 @@ router.patch('/:id', authenticate, isAdmin, async (req, res) => {
     const updatedMeeting = await prisma.meeting.update({
         where: { id },
         data: {
+            title: title || meeting.title,
             type: type || meeting.type,
             date: date ? new Date(date) : meeting.date,
             cutoffTime: cutoffTime || meeting.cutoffTime,
             startTime: startTime || meeting.startTime,
             endTime: endTime || meeting.endTime,
-            location: location || meeting.location
+            location: location || meeting.location,
+            status: status || meeting.status
         }
     })
     res.json({ message: "Meeting updated successfully!", updatedMeeting })
