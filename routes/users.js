@@ -45,9 +45,7 @@ const updateUserValidation = [
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/UserList'
  *       401:
  *         description: Unauthorized
  *         content:
@@ -193,6 +191,10 @@ router.get("/:id", authenticate, asyncHandler(async (req, res) => {
  *     responses:
  *       201:
  *         description: User created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CreateUserResponse'
  *       400:
  *         description: Validation failed
  *         content:

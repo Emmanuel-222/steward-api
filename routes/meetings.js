@@ -34,9 +34,7 @@ const meetingValidation = [
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Meeting'
+ *               $ref: '#/components/schemas/MeetingList'
  */
 router.get('/', authenticate, asyncHandler(async (req, res) => {
     const meetings = await prisma.meeting.findMany({
