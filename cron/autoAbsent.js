@@ -1,7 +1,5 @@
 const cron = require('node-cron')
-const { PrismaClient } = require('@prisma/client')
-
-const prisma = new PrismaClient()
+const { prisma } = require('../prisma')
 
 const autoMarkAbsent = async () => {
     // Helper to parse "11:20 AM" or "14:05" into a Date object for today

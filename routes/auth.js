@@ -1,13 +1,12 @@
 const express = require('express')
 const router = express.Router()
-const { PrismaClient } = require('@prisma/client')
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
 const { body } = require('express-validator')
 const authenticate = require('../middleware/authenticate')
 const handleValidation = require('../middleware/validate')
+const { prisma } = require('../prisma')
 
-const prisma = new PrismaClient()
 const JWT_SECRET = process.env.JWT_SECRET
 
 /**
