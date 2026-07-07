@@ -5,6 +5,9 @@ const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
 const { prisma } = require('../prisma')
 const handleValidation = require('../middleware/validate')
+const asyncHandler = require('../utils/asyncHandler')
+const AppError = require('../utils/AppError')
+const { success, created } = require('../utils/response')
 
 const meetingValidation = [
     body('title').trim().notEmpty().withMessage('Meeting title is required'),
@@ -35,7 +38,7 @@ const meetingValidation = [
  *               items:
  *                 $ref: '#/components/schemas/Meeting'
  */
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, asyncHandler(async (req, res) => {
     const meetings = await prisma.meeting.findMany({
         orderBy: { date: 'desc' },
         include: {
@@ -66,8 +69,8 @@ router.get('/', authenticate, async (req, res) => {
         }
     })
 
-    res.json(meetingsWithCounts)
-})
+    return success(res, meetingsWithCounts)
+}))
 
 /**
  * @swagger
@@ -97,7 +100,7 @@ router.get('/', authenticate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, asyncHandler(async (req, res) => {
     const id = Number(req.params.id)
     const meeting = await prisma.meeting.findUnique({
         where: { id },
@@ -107,13 +110,13 @@ router.get('/:id', authenticate, async (req, res) => {
             }
         }
     })
-    if (!meeting) return res.status(404).json({ message: "Meeting not found" })
+    if (!meeting) throw new AppError("Meeting not found", 404)
     
     const presentCount = meeting.attendance.filter(a => a.status === 'present' || a.status === 'late').length
     const lateCount = meeting.attendance.filter(a => a.status === 'late').length
     const absentCount = meeting.attendance.filter(a => a.status === 'absent').length
     
-    res.json({
+    return success(res, {
         id: meeting.id,
         type: meeting.type,
         date: meeting.date,
@@ -127,7 +130,7 @@ router.get('/:id', authenticate, async (req, res) => {
         lateCount,
         absentCount
     })
-})
+}))
 
 /**
  * @swagger
@@ -153,22 +156,22 @@ router.get('/:id', authenticate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/', authenticate, isAdmin, meetingValidation, async (req, res) => {
+router.post('/', authenticate, isAdmin, meetingValidation, asyncHandler(async (req, res) => {
     const { title, type, date, startTime, cutoffTime, location, endTime } = req.body
     const newMeeting = await prisma.meeting.create({
         data: {
             title,
             type,
-            date: new Date(date),  //save as a date of the same date type of the db, so that no matter the date from the request body we always save the proper date needed on the db.
+            date: new Date(date),
             startTime,
             cutoffTime,
             endTime,
             location,
-            status: 'Ongoing' // Default status for new meetings
+            status: 'Ongoing'
         }
     })
-    res.status(201).json({ message: "Meeting created successfully", meeting: newMeeting })
-})
+    return created(res, { meeting: newMeeting }, "Meeting created successfully")
+}))
 
 /**
  * @swagger
@@ -200,13 +203,13 @@ router.post('/', authenticate, isAdmin, meetingValidation, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/:id', authenticate, isAdmin, async (req, res) => {
+router.patch('/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
     const id = Number(req.params.id)
     const { title, type, date, startTime, cutoffTime, location, endTime, status } = req.body
     const meeting = await prisma.meeting.findUnique({
         where: { id }
     })
-    if (!meeting) return res.status(404).json({ message: "Meeting not found" })
+    if (!meeting) throw new AppError("Meeting not found", 404)
     const updatedMeeting = await prisma.meeting.update({
         where: { id },
         data: {
@@ -220,8 +223,8 @@ router.patch('/:id', authenticate, isAdmin, async (req, res) => {
             status: status || meeting.status
         }
     })
-    res.json({ message: "Meeting updated successfully!", updatedMeeting })
-})
+    return success(res, { updatedMeeting }, "Meeting updated successfully!")
+}))
 
 /**
  * @swagger
@@ -247,16 +250,16 @@ router.patch('/:id', authenticate, isAdmin, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.delete('/:id', authenticate, isAdmin, async (req, res) => {
+router.delete('/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
     const id = Number(req.params.id)
     const meeting = await prisma.meeting.findUnique({
         where: { id }
     })
-    if (!meeting) return res.status(404).json({ message: "Meeting not found" })
+    if (!meeting) throw new AppError("Meeting not found", 404)
     await prisma.meeting.delete({
         where: { id }
     })
-    res.json({ message: "Meeting deleted successfully" })
-})
+    return success(res, null, "Meeting deleted successfully")
+}))
 
 module.exports = router
