@@ -4,10 +4,8 @@ const { body } = require('express-validator')
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
 const isAuthorized = require('../middleware/isAuthorized')
-const { PrismaClient } = require('@prisma/client')
+const { prisma } = require('../prisma')
 const handleValidation = require('../middleware/validate')
-
-const prisma = new PrismaClient()
 
 const markAttendanceValidation = [
     body('userId').isInt().withMessage('User ID must be a number'),

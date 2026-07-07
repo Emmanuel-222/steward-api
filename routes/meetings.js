@@ -3,10 +3,8 @@ const router = express.Router()
 const { body } = require('express-validator')
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
-const { PrismaClient } = require('@prisma/client')
+const { prisma } = require('../prisma')
 const handleValidation = require('../middleware/validate')
-
-const prisma = new PrismaClient()
 
 const meetingValidation = [
     body('title').trim().notEmpty().withMessage('Meeting title is required'),

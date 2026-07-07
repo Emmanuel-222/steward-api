@@ -49,9 +49,23 @@ app.use('/users', userRoutes)
 app.use('/meetings', meetingRoutes)
 app.use('/attendance', attendanceRoutes)
 
-app.listen(3000, () => {
+const { disconnect } = require('./prisma')
+
+const server = app.listen(3000, () => {
     console.log('Steward API running on http://localhost:3000')
     console.log('Swagger docs available at http://localhost:3000/api-docs')
 })
 
 autoMarkAbsent()
+
+async function shutdown(signal) {
+    console.log(`\n${signal} received — shutting down gracefully...`)
+    server.close(async () => {
+        await disconnect()
+        console.log('Prisma disconnected. Goodbye.')
+        process.exit(0)
+    })
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('SIGTERM', () => shutdown('SIGTERM'))
