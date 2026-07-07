@@ -1,11 +1,30 @@
 const express = require('express')
 const router = express.Router()
+const { body } = require('express-validator')
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
 const isAuthorized = require('../middleware/isAuthorized')
 const { PrismaClient } = require('@prisma/client')
+const handleValidation = require('../middleware/validate')
 
 const prisma = new PrismaClient()
+
+const markAttendanceValidation = [
+    body('userId').isInt().withMessage('User ID must be a number'),
+    body('meetingId').isInt().withMessage('Meeting ID must be a number'),
+    handleValidation,
+]
+
+const excuseValidation = [
+    body('meetingId').isInt().withMessage('Meeting ID must be a number'),
+    body('reason').trim().notEmpty().withMessage('Reason is required'),
+    handleValidation,
+]
+
+const resolveExcuseValidation = [
+    body('status').isIn(['Approved', 'Rejected']).withMessage('Status must be Approved or Rejected'),
+    handleValidation,
+]
 
 // Mark a user as present/absent for a meeting
 /**
@@ -32,12 +51,10 @@ const prisma = new PrismaClient()
  *       404:
  *         description: User or meeting not found
  */
-router.post('/', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
+router.post('/', authenticate, isAuthorized(['admin', 'leader', 'pastor']), markAttendanceValidation, async (req, res) => {
     try {
         const { userId, meetingId, status } = req.body
         const { role, department } = req.user
-
-        if (!userId || !meetingId) return res.status(400).json({ message: 'All fields are required!' })
         
         // check if user exist  
         const existingUser = await prisma.user.findUnique({ where: { id: Number(userId) } })
@@ -262,14 +279,10 @@ router.post('/finalize/:meetingId', authenticate, isAdmin, async (req, res) => {
 // --- Excuse Request Routes ---
 
 // Submit an excuse (Steward)
-router.post('/excuse', authenticate, async (req, res) => {
+router.post('/excuse', authenticate, excuseValidation, async (req, res) => {
     try {
         const { meetingId, reason } = req.body
-        const stewardId = req.user.userId // Corrected from req.user.id to match JWT payload
-
-        if (!meetingId || !reason) {
-            return res.status(400).json({ message: 'Meeting ID and reason are required' })
-        }
+        const stewardId = req.user.userId
 
         const request = await prisma.excuseRequest.create({
             data: {
@@ -320,15 +333,11 @@ router.get('/excuse/pending', authenticate, isAuthorized(['admin', 'leader', 'pa
 })
 
 // Resolve excuse request (Admin/Pastor/Leader)
-router.patch('/excuse/:id', authenticate, isAuthorized(['admin', 'leader', 'pastor']), async (req, res) => {
+router.patch('/excuse/:id', authenticate, isAuthorized(['admin', 'leader', 'pastor']), resolveExcuseValidation, async (req, res) => {
     try {
         const id = Number(req.params.id)
         const { status, adminComment } = req.body
         const { role, department } = req.user
-
-        if (!['Approved', 'Rejected'].includes(status)) {
-            return res.status(400).json({ message: 'Invalid status' })
-        }
 
         const excuseRequest = await prisma.excuseRequest.findUnique({
             where: { id },

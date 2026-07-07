@@ -1,11 +1,32 @@
 const express = require("express");
 const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
+const { body } = require('express-validator');
 
 const prisma = new PrismaClient();
 const bcrypt = require("bcrypt");
 const authenticate = require("../middleware/authenticate");
 const isAdmin = require("../middleware/isAdmin");
+const handleValidation = require("../middleware/validate");
+
+const createUserValidation = [
+    body('fullName').trim().notEmpty().withMessage('Full name is required'),
+    body('email').isEmail().withMessage('A valid email is required'),
+    body('phone').trim().notEmpty().withMessage('Phone number is required'),
+    body('department').trim().notEmpty().withMessage('Department is required'),
+    body('role').trim().notEmpty().withMessage('Role is required'),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    handleValidation,
+]
+
+const updateUserValidation = [
+    body('fullName').optional().trim().notEmpty().withMessage('Full name cannot be empty'),
+    body('email').optional().isEmail().withMessage('A valid email is required'),
+    body('phone').optional().trim().notEmpty().withMessage('Phone number cannot be empty'),
+    body('department').optional().trim().notEmpty().withMessage('Department cannot be empty'),
+    body('role').optional().trim().notEmpty().withMessage('Role cannot be empty'),
+    handleValidation,
+]
 
 // Get all users
 /**
@@ -183,10 +204,8 @@ router.get("/:id", authenticate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/", authenticate, isAdmin, async (req, res) => {
+router.post("/", authenticate, isAdmin, createUserValidation, async (req, res) => {
   const { fullName, email, phone, department, role, password } = req.body;
-  if (!fullName || !email || !phone || !department || !role || !password)
-    return res.status(400).json({ message: "All field is required!" });
   const existingUser = await prisma.user.findUnique({
     where: { email },
   });
@@ -245,14 +264,9 @@ router.post("/", authenticate, isAdmin, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch("/:id", authenticate, isAdmin, async (req, res) => {
+router.patch("/:id", authenticate, isAdmin, updateUserValidation, async (req, res) => {
   const id = Number(req.params.id);
   const { fullName, email, phone, department, role } = req.body;
-  // To check if at least one field was changed before I query the db to update just that part, that's why we use Patch
-  if (!fullName && !email && !phone && !department && !role)
-    return res
-      .status(400)
-      .json({ message: "At least one field is required to update" });
   const existingUser = await prisma.user.findUnique({
     where: { id },
   });

@@ -1,10 +1,23 @@
 const express = require('express')
 const router = express.Router()
+const { body } = require('express-validator')
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
 const { PrismaClient } = require('@prisma/client')
+const handleValidation = require('../middleware/validate')
 
 const prisma = new PrismaClient()
+
+const meetingValidation = [
+    body('title').trim().notEmpty().withMessage('Meeting title is required'),
+    body('type').trim().notEmpty().withMessage('Meeting type is required'),
+    body('date').isISO8601().withMessage('A valid date is required'),
+    body('startTime').trim().notEmpty().withMessage('Start time is required'),
+    body('cutoffTime').trim().notEmpty().withMessage('Cutoff time is required'),
+    body('endTime').trim().notEmpty().withMessage('End time is required'),
+    body('location').trim().notEmpty().withMessage('Location is required'),
+    handleValidation,
+]
 
 /**
  * @swagger
@@ -142,9 +155,8 @@ router.get('/:id', authenticate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post('/', authenticate, isAdmin, async (req, res) => {
+router.post('/', authenticate, isAdmin, meetingValidation, async (req, res) => {
     const { title, type, date, startTime, cutoffTime, location, endTime } = req.body
-    if (!title || !type || !date || !startTime || !cutoffTime || !location || !endTime) return res.status(400).json({ message: "All fields are required" })
     const newMeeting = await prisma.meeting.create({
         data: {
             title,

@@ -1,12 +1,33 @@
-require('dotenv').config()  //always config your file.
+require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+const helmet = require('helmet')
+const rateLimit = require('express-rate-limit')
 const swaggerUi = require('swagger-ui-express')
 const swaggerSpec = require('./swagger')
 
 const app = express()
-app.use(express.json())
-app.use(cors())
+app.use(helmet())
+app.use(express.json({ limit: '1mb' }))
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : []
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    cb(null, false)
+  },
+  credentials: true,
+}))
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: 'Too many login attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
 
 // Import for cron job
 const autoMarkAbsent = require('./cron/autoAbsent')
@@ -23,8 +44,7 @@ app.get('/api-docs.json', (req, res) => {
     res.send(swaggerSpec)
 })
 
-// mini apps which stands for services(routes)
-app.use('/auth', authRoutes)
+app.use('/auth', loginLimiter, authRoutes)
 app.use('/users', userRoutes)
 app.use('/meetings', meetingRoutes)
 app.use('/attendance', attendanceRoutes)
