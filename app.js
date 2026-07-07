@@ -2,12 +2,16 @@ require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
 const helmet = require('helmet')
+const morgan = require('morgan')
 const rateLimit = require('express-rate-limit')
 const swaggerUi = require('swagger-ui-express')
 const swaggerSpec = require('./swagger')
+const notFound = require('./middleware/notFound')
+const errorHandler = require('./middleware/errorHandler')
 
 const app = express()
 app.use(helmet())
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 app.use(express.json({ limit: '1mb' }))
 const allowedOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
@@ -24,7 +28,7 @@ app.use(cors({
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { message: 'Too many login attempts. Try again in 15 minutes.' },
+  message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 })
@@ -48,6 +52,9 @@ app.use('/auth', loginLimiter, authRoutes)
 app.use('/users', userRoutes)
 app.use('/meetings', meetingRoutes)
 app.use('/attendance', attendanceRoutes)
+
+app.use(notFound)
+app.use(errorHandler)
 
 const { disconnect } = require('./prisma')
 

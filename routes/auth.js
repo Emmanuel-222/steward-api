@@ -6,6 +6,9 @@ const { body } = require('express-validator')
 const authenticate = require('../middleware/authenticate')
 const handleValidation = require('../middleware/validate')
 const { prisma } = require('../prisma')
+const asyncHandler = require('../utils/asyncHandler')
+const AppError = require('../utils/AppError')
+const { success } = require('../utils/response')
 
 const JWT_SECRET = process.env.JWT_SECRET
 
@@ -45,29 +48,27 @@ router.post('/login', [
     body('email').isEmail().withMessage('A valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),
     handleValidation,
-], async (req, res) => {
+], asyncHandler(async (req, res) => {
     const { email, password } = req.body
-    const existingUser = await prisma.user.findUnique({where: { email } }) //check if user email exist already
+    const existingUser = await prisma.user.findUnique({where: { email } })
     if(!existingUser) {
-        return res.status(401).json({ message: 'Invalid credentials'})
+        throw new AppError('Invalid credentials', 401)
     }
     const passwordMatch = await bcrypt.compare(password, existingUser.password)
     if(!passwordMatch) {
-        return res.status(401).json({ message: 'Invalid credentials'})
+        throw new AppError('Invalid credentials', 401)
     }
-    //WHen the password which is the last thing to check when login in is correct, then we sign a token from the server for that user contain things we will define when signing.
     const token = jwt.sign(
         { 
             userId: existingUser.id, 
             email: existingUser.email, 
             role: existingUser.role,
             department: existingUser.department 
-        },  //payload sent 
+        },
         JWT_SECRET,   
-        { expiresIn: '24h' }   //time for token to expire 
+        { expiresIn: '24h' }
     )
-    res.status(200).json({ 
-        message: 'Login is successful', 
+    return success(res, {
         token,
         user: {
             id: existingUser.id,
@@ -76,8 +77,8 @@ router.post('/login', [
             role: existingUser.role,
             department: existingUser.department
         }
-    })
-})
+    }, 'Login is successful')
+}))
 
 /**
  * @swagger
@@ -93,25 +94,21 @@ router.post('/login', [
  *       401:
  *         description: Not authenticated
  */
-router.get('/me', authenticate, async (req, res) => {
-    try {
-        const user = await prisma.user.findUnique({
-            where: { id: req.user.userId }
-        })
-        
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' })
-        }
-        
-        res.status(200).json({
-            id: user.id,
-            email: user.email,
-            name: user.fullName,
-            role: user.role
-        })
-    } catch (err) {
-        res.status(500).json({ message: 'Error fetching profile' })
+router.get('/me', authenticate, asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({
+        where: { id: req.user.userId }
+    })
+    
+    if (!user) {
+        throw new AppError('User not found', 404)
     }
-})
+    
+    return success(res, {
+        id: user.id,
+        email: user.email,
+        name: user.fullName,
+        role: user.role
+    })
+}))
 
 module.exports = router

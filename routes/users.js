@@ -7,6 +7,9 @@ const bcrypt = require("bcrypt");
 const authenticate = require("../middleware/authenticate");
 const isAdmin = require("../middleware/isAdmin");
 const handleValidation = require("../middleware/validate");
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
+const { success, created } = require('../utils/response');
 
 const createUserValidation = [
     body('fullName').trim().notEmpty().withMessage('Full name is required'),
@@ -52,7 +55,7 @@ const updateUserValidation = [
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/", authenticate, async (req, res) => {
+router.get("/", authenticate, asyncHandler(async (req, res) => {
   const { role, department } = req.user;
   
   let whereClause = {};
@@ -72,14 +75,14 @@ router.get("/", authenticate, async (req, res) => {
       createdAt: true,
     },
   });
-  res.json(users);
-});
+  return success(res, users);
+}));
 
-router.get("/search/:name", authenticate, async (req, res) => {
+router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
   const search = req.params.name;
 
   if (!search || search.trim() === "") {
-    return res.status(400).json({ message: "Search term is required" });
+    throw new AppError("Search term is required", 400);
   }
 
   const users = await prisma.user.findMany({
@@ -122,8 +125,8 @@ router.get("/search/:name", authenticate, async (req, res) => {
     },
   });
 
-  res.json(users);
-});
+  return success(res, users);
+}));
 
 // Get a single user
 /**
@@ -154,7 +157,7 @@ router.get("/search/:name", authenticate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/:id", authenticate, async (req, res) => {
+router.get("/:id", authenticate, asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const user = await prisma.user.findUnique({
     where: { id },
@@ -168,9 +171,9 @@ router.get("/:id", authenticate, async (req, res) => {
       createdAt: true,
     },
   });
-  if (!user) return res.status(404).json({ message: "User not found" });
-  res.json(user);
-});
+  if (!user) throw new AppError("User not found", 404);
+  return success(res, user);
+}));
 
 // Create new user only admin can do this
 /**
@@ -203,13 +206,13 @@ router.get("/:id", authenticate, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/", authenticate, isAdmin, createUserValidation, async (req, res) => {
+router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async (req, res) => {
   const { fullName, email, phone, department, role, password } = req.body;
   const existingUser = await prisma.user.findUnique({
     where: { email },
   });
   if (existingUser)
-    return res.status(400).json({ message: "Email already in use" });
+    throw new AppError("Email already in use", 400);
   const hashedPassword = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
     data: {
@@ -221,10 +224,8 @@ router.post("/", authenticate, isAdmin, createUserValidation, async (req, res) =
       password: hashedPassword,
     },
   });
-  res
-    .status(201)
-    .json({ message: "User created successfully", userId: user.id });
-});
+  return created(res, { userId: user.id }, "User created successfully");
+}));
 
 // update users in the system, only admin can do this
 /**
@@ -263,17 +264,17 @@ router.post("/", authenticate, isAdmin, createUserValidation, async (req, res) =
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch("/:id", authenticate, isAdmin, updateUserValidation, async (req, res) => {
+router.patch("/:id", authenticate, isAdmin, updateUserValidation, asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const { fullName, email, phone, department, role } = req.body;
   const existingUser = await prisma.user.findUnique({
     where: { id },
   });
-  if (!existingUser) return res.status(404).json({ message: "User not found" });
+  if (!existingUser) throw new AppError("User not found", 404);
   const updatedUser = await prisma.user.update({
     where: { id },
     data: {
-      fullName: fullName || existingUser.fullName, //replace with the new from the body, else just leave it has it was before on our database.
+      fullName: fullName || existingUser.fullName,
       email: email || existingUser.email,
       phone: phone || existingUser.phone,
       department: department || existingUser.department,
@@ -289,8 +290,8 @@ router.patch("/:id", authenticate, isAdmin, updateUserValidation, async (req, re
       updatedAt: true,
     },
   });
-  res.json({ message: "User updated successfully", updatedUser });
-});
+  return success(res, { updatedUser }, "User updated successfully");
+}));
 
 // delete user from the db
 /**
@@ -317,16 +318,16 @@ router.patch("/:id", authenticate, isAdmin, updateUserValidation, async (req, re
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.delete("/:id", authenticate, isAdmin, async (req, res) => {
+router.delete("/:id", authenticate, isAdmin, asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const existingUser = await prisma.user.findUnique({
     where: { id },
   });
-  if (!existingUser) return res.status(404).json({ message: "User not found" });
+  if (!existingUser) throw new AppError("User not found", 404);
   await prisma.user.delete({
     where: { id },
   });
-  res.json({ message: "User deleted successfully" });
-});
+  return success(res, null, "User deleted successfully");
+}));
 
 module.exports = router;
