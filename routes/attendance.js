@@ -182,20 +182,41 @@ router.get('/user/:userId', authenticate, asyncHandler(async (req, res) => {
         }
     })
     if (!user) throw new AppError("User not found", 404)
-    const attendance = await prisma.attendance.findMany({
-        where: { userId },
-        include: { meeting: true },
-        orderBy: { createdAt: 'desc' }
-    })
-    const total = attendance.length
-    const present = attendance.filter(a => a.status === 'present' || a.status === 'late').length
-    const late = attendance.filter(a => a.status === 'late').length
-    const absent = attendance.filter(a => a.status === 'absent').length
-    const excused = attendance.filter(a => a.status === 'excused').length
+
+    const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
+    const limit = page ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;
+    const skip = page ? (page - 1) * limit : undefined;
+    const take = page ? limit : undefined;
+
+    const where = { userId };
+
+    const [attendance, total, stats] = await Promise.all([
+        prisma.attendance.findMany({
+            where,
+            skip,
+            take,
+            include: { meeting: true },
+            orderBy: { createdAt: 'desc' }
+        }),
+        page ? prisma.attendance.count({ where }) : Promise.resolve(0),
+        prisma.attendance.groupBy({
+            by: ['status'],
+            where,
+            _count: true,
+        }),
+    ]);
+
+    const allTotal = stats.reduce((sum, s) => sum + s._count, 0);
+    const present = stats.find(s => s.status === 'present' || s.status === 'late')?._count ?? 0;
+    const late = stats.find(s => s.status === 'late')?._count ?? 0;
+    const absent = stats.find(s => s.status === 'absent')?._count ?? 0;
+    const excused = stats.find(s => s.status === 'excused')?._count ?? 0;
+
     return success(res, {
         user,
-        summary: { total, present, late, absent, excused },
-        records: attendance
+        summary: { total: allTotal, present, late, absent, excused },
+        records: attendance,
+        pagination: page ? { total: total ?? allTotal, page, limit, totalPages: Math.ceil((total ?? allTotal) / limit) } : null,
     })
 }))
 

@@ -37,14 +37,24 @@ const meetingValidation = [
  *               $ref: '#/components/schemas/MeetingList'
  */
 router.get('/', authenticate, asyncHandler(async (req, res) => {
-    const meetings = await prisma.meeting.findMany({
-        orderBy: { date: 'desc' },
-        include: {
-            attendance: {
-                select: { status: true }
+    const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
+    const limit = page ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;
+    const skip = page ? (page - 1) * limit : undefined;
+    const take = page ? limit : undefined;
+
+    const [meetings, total] = await Promise.all([
+        prisma.meeting.findMany({
+            skip,
+            take,
+            orderBy: { date: 'desc' },
+            include: {
+                attendance: {
+                    select: { status: true }
+                }
             }
-        }
-    })
+        }),
+        page ? prisma.meeting.count() : Promise.resolve(0),
+    ])
 
     const meetingsWithCounts = meetings.map(meeting => {
         const presentCount = meeting.attendance.filter(a => a.status === 'present' || a.status === 'late').length
@@ -67,7 +77,10 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
         }
     })
 
-    return success(res, meetingsWithCounts)
+    return success(res, {
+        items: meetingsWithCounts,
+        pagination: page ? { total, page, limit, totalPages: Math.ceil(total / limit) } : null,
+    })
 }))
 
 /**
