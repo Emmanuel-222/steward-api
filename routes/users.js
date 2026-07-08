@@ -45,9 +45,7 @@ const updateUserValidation = [
  *         content:
  *           application/json:
  *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/User'
+ *               $ref: '#/components/schemas/UserList'
  *       401:
  *         description: Unauthorized
  *         content:
@@ -62,20 +60,38 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
   if (role?.toLowerCase() === 'leader') {
     whereClause = { department: department };
   }
+  if (req.query.role && typeof req.query.role === 'string') {
+    whereClause.role = { equals: req.query.role, mode: 'insensitive' };
+  }
 
-  const users = await prisma.user.findMany({
-    where: whereClause,
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      phone: true,
-      department: true,
-      role: true,
-      createdAt: true,
-    },
+  const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
+  const limit = page ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;
+  const skip = page ? (page - 1) * limit : undefined;
+  const take = page ? limit : undefined;
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where: whereClause,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        department: true,
+        role: true,
+        createdAt: true,
+      },
+    }),
+    page ? prisma.user.count({ where: whereClause }) : Promise.resolve(0),
+  ]);
+
+  return success(res, {
+    items: users,
+    pagination: page ? { total, page, limit, totalPages: Math.ceil(total / limit) } : null,
   });
-  return success(res, users);
 }));
 
 router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
@@ -85,47 +101,46 @@ router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
     throw new AppError("Search term is required", 400);
   }
 
-  const users = await prisma.user.findMany({
-    where: {
-      OR: [
-        {
-          fullName: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          department: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          role: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          phone: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-      ],
-    },
-    select: {
-      id: true,
-      fullName: true,
-      email: true,
-      phone: true,
-      department: true,
-      role: true,
-      createdAt: true,
-    },
-  });
+  const searchWhere = {
+    OR: [
+      { fullName: { contains: search, mode: "insensitive" } },
+      { department: { contains: search, mode: "insensitive" } },
+      { role: { contains: search, mode: "insensitive" } },
+      { phone: { contains: search, mode: "insensitive" } },
+    ],
+  };
+  const whereClause = req.query.role && typeof req.query.role === 'string'
+    ? { ...searchWhere, role: { equals: req.query.role, mode: 'insensitive' } }
+    : searchWhere;
 
-  return success(res, users);
+  const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
+  const limit = page ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;
+  const skip = page ? (page - 1) * limit : undefined;
+  const take = page ? limit : undefined;
+
+  const [users, total] = await Promise.all([
+    prisma.user.findMany({
+      where: whereClause,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        department: true,
+        role: true,
+        createdAt: true,
+      },
+    }),
+    page ? prisma.user.count({ where: whereClause }) : Promise.resolve(0),
+  ]);
+
+  return success(res, {
+    items: users,
+    pagination: page ? { total, page, limit, totalPages: Math.ceil(total / limit) } : null,
+  });
 }));
 
 // Get a single user
@@ -193,6 +208,10 @@ router.get("/:id", authenticate, asyncHandler(async (req, res) => {
  *     responses:
  *       201:
  *         description: User created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/CreateUserResponse'
  *       400:
  *         description: Validation failed
  *         content:

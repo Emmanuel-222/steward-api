@@ -65,13 +65,32 @@ const server = app.listen(3000, () => {
 
 autoMarkAbsent()
 
+const SHUTDOWN_TIMEOUT = 5000
+
 async function shutdown(signal) {
     console.log(`\n${signal} received — shutting down gracefully...`)
-    server.close(async () => {
+
+    const forceExit = setTimeout(() => {
+        console.error(`Shutdown timed out after ${SHUTDOWN_TIMEOUT}ms — force exiting`)
+        process.exit(1)
+    }, SHUTDOWN_TIMEOUT)
+    forceExit.unref()
+
+    try {
+        if (server.listening) {
+            await new Promise((resolve, reject) => {
+                server.close((err) => (err ? reject(err) : resolve()))
+            })
+        }
         await disconnect()
-        console.log('Prisma disconnected. Goodbye.')
+        clearTimeout(forceExit)
+        console.log('Disconnected. Goodbye.')
         process.exit(0)
-    })
+    } catch (err) {
+        console.error('Shutdown error:', err)
+        clearTimeout(forceExit)
+        process.exit(1)
+    }
 }
 
 process.on('SIGINT', () => shutdown('SIGINT'))
