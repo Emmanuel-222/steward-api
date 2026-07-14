@@ -63,6 +63,7 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
         
         return {
             id: meeting.id,
+            title: meeting.title,
             type: meeting.type,
             date: meeting.date,
             startTime: meeting.startTime,
@@ -129,6 +130,7 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
     
     return success(res, {
         id: meeting.id,
+        title: meeting.title,
         type: meeting.type,
         date: meeting.date,
         startTime: meeting.startTime,
