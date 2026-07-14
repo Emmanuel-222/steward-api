@@ -166,10 +166,17 @@ router.get('/meeting/:meetingId', authenticate, asyncHandler(async (req, res) =>
 // Get attendance of specific user 
 router.get('/user/:userId', authenticate, asyncHandler(async (req, res) => {
     const userId = Number(req.params.userId)
-    
-    if (req.user.role?.toLowerCase() !== 'admin' && req.user.userId !== userId) {
+    const callerRole = req.user.role?.toLowerCase()
+    const callerUserId = req.user.userId
+
+    const isAdmin = callerRole === 'admin'
+    const isOwnRecord = callerUserId === userId
+    const isLeaderOrPastor = callerRole === 'leader' || callerRole === 'pastor'
+
+    if (!isAdmin && !isOwnRecord && !isLeaderOrPastor) {
         throw new AppError("You can only view your own attendance records.", 403)
     }
+
     const user = await prisma.user.findUnique({ where: { id: userId },
         select: {
             id: true,
@@ -182,6 +189,10 @@ router.get('/user/:userId', authenticate, asyncHandler(async (req, res) => {
         }
     })
     if (!user) throw new AppError("User not found", 404)
+
+    if (isLeaderOrPastor && !isOwnRecord && user.department !== req.user.department) {
+        throw new AppError("You can only view attendance records for your own department.", 403)
+    }
 
     const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
     const limit = page ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;

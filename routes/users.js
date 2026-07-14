@@ -57,7 +57,7 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
   const { role, department } = req.user;
   
   let whereClause = {};
-  if (role?.toLowerCase() === 'leader') {
+  if (['leader', 'pastor'].includes(role?.toLowerCase())) {
     whereClause = { department: department };
   }
   if (req.query.role && typeof req.query.role === 'string') {
@@ -96,6 +96,7 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
 
 router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
   const search = req.params.name;
+  const { role, department } = req.user;
 
   if (!search || search.trim() === "") {
     throw new AppError("Search term is required", 400);
@@ -109,9 +110,14 @@ router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
       { phone: { contains: search, mode: "insensitive" } },
     ],
   };
-  const whereClause = req.query.role && typeof req.query.role === 'string'
-    ? { ...searchWhere, role: { equals: req.query.role, mode: 'insensitive' } }
-    : searchWhere;
+
+  let whereClause = searchWhere;
+  if (['leader', 'pastor'].includes(role?.toLowerCase())) {
+    whereClause = { ...searchWhere, department };
+  }
+  if (req.query.role && typeof req.query.role === 'string') {
+    whereClause = { ...whereClause, role: { equals: req.query.role, mode: 'insensitive' } };
+  }
 
   const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
   const limit = page ? Math.min(100, Math.max(1, parseInt(req.query.limit) || 20)) : null;
@@ -187,6 +193,9 @@ router.get("/:id", authenticate, asyncHandler(async (req, res) => {
     },
   });
   if (!user) throw new AppError("User not found", 404);
+  if (['leader', 'pastor'].includes(req.user.role?.toLowerCase()) && user.department !== req.user.department) {
+    throw new AppError("User not found", 404);
+  }
   return success(res, user);
 }));
 
