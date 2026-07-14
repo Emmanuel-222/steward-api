@@ -33,8 +33,9 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// Import for cron job
+// Import for cron jobs
 const autoMarkAbsent = require('./cron/autoAbsent')
+const cleanupTokens = require('./cron/cleanupTokens')
 
 // Import of routes files
 const authRoutes = require('./routes/auth')
@@ -64,6 +65,7 @@ const server = app.listen(3000, () => {
 })
 
 autoMarkAbsent()
+cleanupTokens()
 
 const SHUTDOWN_TIMEOUT = 5000
 
