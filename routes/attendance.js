@@ -52,16 +52,12 @@ const resolveExcuseValidation = [
  *       404:
  *         description: User or meeting not found
  */
-router.post('/', authenticate, isAuthorized(['admin', 'leader', 'pastor']), markAttendanceValidation, asyncHandler(async (req, res) => {
+router.post('/', authenticate, isAuthorized(['admin', 'pastor']), markAttendanceValidation, asyncHandler(async (req, res) => {
     const { userId, meetingId, status } = req.body
     const { role, department } = req.user
     
     const existingUser = await prisma.user.findUnique({ where: { id: Number(userId) } })
     if (!existingUser) throw new AppError('User not found', 404)
-    
-    if (role?.toLowerCase() === 'leader' && existingUser.department !== department) {
-        throw new AppError('You can only mark attendance for stewards in your department', 403)
-    }
     
     const meeting = await prisma.meeting.findUnique({ where: { id: Number(meetingId) } })
     if (!meeting) throw new AppError("Meeting not found", 404)
@@ -330,7 +326,7 @@ router.get('/excuse/pending', authenticate, isAuthorized(['admin', 'leader', 'pa
                 select: { fullName: true, department: true }
             },
             meeting: {
-                select: { type: true, date: true }
+                select: { title: true, type: true, date: true }
             }
         }
     })
@@ -385,6 +381,50 @@ router.patch('/excuse/:id', authenticate, isAuthorized(['admin', 'leader', 'past
     }
 
     return success(res, { request: updatedRequest }, `Excuse request ${status.toLowerCase()}`)
+}))
+
+// Get attendance history for the authenticated user (last 6 months)
+const ATTENDANCE_HISTORY_MONTHS = 6
+
+router.get('/my', authenticate, asyncHandler(async (req, res) => {
+    const userId = req.user.userId
+    const sixMonthsAgo = new Date()
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - ATTENDANCE_HISTORY_MONTHS)
+
+    const records = await prisma.attendance.findMany({
+        where: {
+            userId,
+            markedAt: { gte: sixMonthsAgo }
+        },
+        include: {
+            meeting: {
+                select: { title: true, type: true, date: true, startTime: true, status: true }
+            },
+            excuseRequest: {
+                select: { reason: true }
+            }
+        },
+        orderBy: { markedAt: 'desc' }
+    })
+
+    return success(res, records)
+}))
+
+// Get excuse requests for the authenticated user
+router.get('/excuse/my', authenticate, asyncHandler(async (req, res) => {
+    const userId = req.user.userId
+
+    const requests = await prisma.excuseRequest.findMany({
+        where: { stewardId: userId },
+        include: {
+            meeting: {
+                select: { title: true, type: true, date: true }
+            }
+        },
+        orderBy: { createdAt: 'desc' }
+    })
+
+    return success(res, requests)
 }))
 
 module.exports = router
