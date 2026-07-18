@@ -1,13 +1,19 @@
 const express = require('express')
 const router = express.Router()
 const { body } = require('express-validator')
+const jwt = require('jsonwebtoken')
+const crypto = require('crypto')
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
+const isAuthorized = require('../middleware/isAuthorized')
 const { prisma } = require('../prisma')
 const handleValidation = require('../middleware/validate')
 const asyncHandler = require('../utils/asyncHandler')
 const AppError = require('../utils/AppError')
 const { success, created } = require('../utils/response')
+
+const JWT_SECRET = process.env.JWT_SECRET
+const QR_TOKEN_EXPIRY = '1h'
 
 const meetingValidation = [
     body('title').trim().notEmpty().withMessage('Meeting title is required'),
@@ -273,6 +279,30 @@ router.delete('/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
         where: { id }
     })
     return success(res, null, "Meeting deleted successfully")
+}))
+
+// Generate a signed QR check-in token for a meeting
+router.get('/:id/qr-token', authenticate, isAuthorized(['admin', 'leader', 'pastor']), asyncHandler(async (req, res) => {
+    const id = Number(req.params.id)
+    const meeting = await prisma.meeting.findUnique({
+        where: { id }
+    })
+    if (!meeting) throw new AppError("Meeting not found", 404)
+
+    const token = jwt.sign(
+        {
+            meetingId: meeting.id,
+            purpose: 'check-in',
+            nonce: crypto.randomUUID(),
+        },
+        JWT_SECRET,
+        { expiresIn: QR_TOKEN_EXPIRY }
+    )
+
+    const baseUrl = process.env.CHECKIN_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:5173'
+    const url = `${baseUrl}/check-in/${token}`
+
+    return success(res, { token, url })
 }))
 
 module.exports = router
