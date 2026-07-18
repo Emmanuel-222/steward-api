@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const jwt = require('jsonwebtoken')
 const { body } = require('express-validator')
+const rateLimit = require('express-rate-limit')
 const { prisma } = require('../prisma')
 const handleValidation = require('../middleware/validate')
 const asyncHandler = require('../utils/asyncHandler')
@@ -11,13 +12,21 @@ const { success } = require('../utils/response')
 const JWT_SECRET = process.env.JWT_SECRET
 const QR_TOKEN_EXPIRY = '1h'
 
+const checkInLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { success: false, message: 'Too many check-in attempts. Try again in 15 minutes.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+})
+
 const checkInValidation = [
     body('token').trim().notEmpty().withMessage('Token is required'),
     body('email').isEmail().withMessage('A valid email is required'),
     handleValidation,
 ]
 
-router.post('/check-in', checkInValidation, asyncHandler(async (req, res) => {
+router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (req, res) => {
     const { token, email } = req.body
 
     let payload
@@ -53,18 +62,23 @@ router.post('/check-in', checkInValidation, asyncHandler(async (req, res) => {
         throw new AppError('This meeting is closed. Check-in is no longer available.', 400)
     }
 
-    await prisma.attendance.upsert({
+    const existing = await prisma.attendance.findUnique({
         where: {
             userId_meetingId: {
                 userId: user.id,
                 meetingId: meeting.id
             }
-        },
-        update: {
-            status: 'present',
-            markedAt: new Date()
-        },
-        create: {
+        }
+    })
+
+    if (existing) {
+        return success(res, {
+            stewardName: user.fullName,
+        }, `You're already checked in, ${user.fullName}!`)
+    }
+
+    await prisma.attendance.create({
+        data: {
             userId: user.id,
             meetingId: meeting.id,
             status: 'present',
