@@ -299,7 +299,7 @@ router.get('/:id/qr-token', authenticate, isAuthorized(['admin', 'leader', 'past
         { expiresIn: QR_TOKEN_EXPIRY }
     )
 
-    const baseUrl = process.env.CHECKIN_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:5173'
+    const baseUrl = req.headers.origin || process.env.FRONTEND_URL || 'http://localhost:5173'
     const url = `${baseUrl}/check-in/${token}`
 
     return success(res, { token, url })
