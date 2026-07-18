@@ -53,7 +53,7 @@ router.post('/check-in', checkInValidation, asyncHandler(async (req, res) => {
         throw new AppError('This meeting is closed. Check-in is no longer available.', 400)
     }
 
-    const attendance = await prisma.attendance.upsert({
+    await prisma.attendance.upsert({
         where: {
             userId_meetingId: {
                 userId: user.id,
@@ -72,12 +72,9 @@ router.post('/check-in', checkInValidation, asyncHandler(async (req, res) => {
         }
     })
 
-    const isNewCheckIn = attendance.createdAt.getTime() === attendance.updatedAt.getTime()
-
     return success(res, {
         stewardName: user.fullName,
-        isNewCheckIn
-    }, isNewCheckIn ? `You're checked in, ${user.fullName}!` : `You're already checked in, ${user.fullName}!`)
+    }, `You're checked in, ${user.fullName}!`)
 }))
 
 module.exports = router
