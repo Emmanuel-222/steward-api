@@ -10,7 +10,15 @@ const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
 
 const JWT_SECRET = process.env.JWT_SECRET
-const QR_TOKEN_EXPIRY = '1h'
+const CACHE_TTL = 5 * 60 * 1000
+const checkInCache = new Map()
+
+setInterval(() => {
+    const now = Date.now()
+    for (const [key, ttl] of checkInCache.entries()) {
+        if (ttl < now) checkInCache.delete(key)
+    }
+}, 60 * 1000)
 
 const checkInLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -62,6 +70,14 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
         throw new AppError('This meeting is closed. Check-in is no longer available.', 400)
     }
 
+    const cacheKey = `${user.id}:${meeting.id}`
+    if (checkInCache.has(cacheKey)) {
+        return success(res, {
+            stewardName: user.fullName,
+            isDuplicate: true,
+        }, `You're already checked in, ${user.fullName}!`)
+    }
+
     const existing = await prisma.attendance.findUnique({
         where: {
             userId_meetingId: {
@@ -72,8 +88,10 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
     })
 
     if (existing) {
+        checkInCache.set(cacheKey, Date.now() + CACHE_TTL)
         return success(res, {
             stewardName: user.fullName,
+            isDuplicate: true,
         }, `You're already checked in, ${user.fullName}!`)
     }
 
@@ -86,8 +104,11 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
         }
     })
 
+    checkInCache.set(cacheKey, Date.now() + CACHE_TTL)
+
     return success(res, {
         stewardName: user.fullName,
+        isDuplicate: false,
     }, `You're checked in, ${user.fullName}!`)
 }))
 
