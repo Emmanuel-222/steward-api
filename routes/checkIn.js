@@ -36,6 +36,7 @@ const checkInValidation = [
 
 router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (req, res) => {
     const { token, email } = req.body
+    const normalizedEmail = email.toLowerCase().trim()
 
     let payload
     try {
@@ -56,7 +57,7 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
         throw new AppError('Invalid QR code. Please ask the admin for a new one.', 401)
     }
 
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase().trim() } })
+    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
     if (!user) {
         throw new AppError('No steward found with that email. Try a different email.', 404)
     }
@@ -70,7 +71,8 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
         throw new AppError('This meeting is closed. Check-in is no longer available.', 400)
     }
 
-    const cacheKey = `${user.id}:${meeting.id}`
+    const cacheKey = `${normalizedEmail}:${meeting.id}`
+
     if (checkInCache.has(cacheKey)) {
         return success(res, {
             stewardName: user.fullName,
