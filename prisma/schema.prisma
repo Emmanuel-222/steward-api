@@ -22,6 +22,7 @@ model User {
   department    String
   role          String         // "admin", "pastor", "leader", "steward"
   password      String
+  birthday      DateTime?      // optional, DD/MM/YYYY, UTC midnight
   attendance    Attendance[]
   excuses       ExcuseRequest[]
   refreshTokens RefreshToken[]

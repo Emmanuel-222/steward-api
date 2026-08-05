@@ -75,6 +75,7 @@ const options = {
                                 phone: { type: 'string', example: '08012345678' },
                                 department: { type: 'string', example: 'Protocol' },
                                 role: { type: 'string', example: 'admin' },
+                                birthday: { type: 'string', format: 'date', description: 'DD/MM/YYYY' },
                                 createdAt: { type: 'string', format: 'date-time' },
                                 updatedAt: { type: 'string', format: 'date-time' },
                             },
@@ -113,6 +114,7 @@ const options = {
                         department: { type: 'string', example: 'Choir' },
                         role: { type: 'string', example: 'steward' },
                         password: { type: 'string', example: 'securePass123' },
+                        birthday: { type: 'string', format: 'date', description: 'DD/MM/YYYY' },
                     },
                 },
                 CreateUserResponse: {
@@ -136,6 +138,7 @@ const options = {
                         phone: { type: 'string', example: '08000000000' },
                         department: { type: 'string', example: 'Ushering' },
                         role: { type: 'string', example: 'leader' },
+                        birthday: { type: 'string', format: 'date', description: 'DD/MM/YYYY' },
                     },
                 },
                 Meeting: {
