@@ -10,6 +10,7 @@ const { prisma } = require('../prisma')
 const asyncHandler = require('../utils/asyncHandler')
 const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
+const { sendEmail } = require('../utils/email')
 
 const JWT_SECRET = process.env.JWT_SECRET
 const ACCESS_TOKEN_EXPIRY = '6h'
@@ -231,6 +232,42 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
         name: user.fullName,
         role: user.role
     })
+}))
+
+const codeCooldowns = new Map() // userId -> last send timestamp (ms)
+
+router.post('/onboarding/send-code', authenticate, asyncHandler(async (req, res) => {
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } })
+    if (!user) throw new AppError('User not found', 404)
+    if (user.emailVerified) throw new AppError('Email is already verified', 409)
+
+    const last = codeCooldowns.get(user.id) ?? 0
+    if (Date.now() - last < 60_000) {
+        throw new AppError('Please wait 60 seconds before requesting another code', 429)
+    }
+
+    const code = String(crypto.randomInt(100000, 1000000))
+    const codeHash = await bcrypt.hash(code, 10)
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
+
+    await prisma.$transaction([
+        prisma.verificationCode.updateMany({
+            where: { userId: user.id, consumed: false },
+            data: { consumed: true },
+        }),
+        prisma.verificationCode.create({
+            data: { userId: user.id, codeHash, expiresAt },
+        }),
+    ])
+    codeCooldowns.set(user.id, Date.now())
+
+    await sendEmail({
+        to: user.email,
+        subject: 'Your Steward Registrar verification code',
+        html: `<p>Hi ${user.fullName},</p><p>Your verification code is:</p><h2>${code}</h2><p>It expires in 10 minutes.</p>`,
+    })
+
+    return success(res, null, 'Verification code sent')
 }))
 
 module.exports = router
