@@ -352,6 +352,8 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
                 role: 'steward',
                 birthday: row.birthday,
                 password: hashedPassword,
+                emailVerified: false,
+                mustChangePassword: true,
             },
         })))
         imported = toCreate.length
@@ -470,6 +472,19 @@ router.delete("/:id", authenticate, isAdmin, asyncHandler(async (req, res) => {
     where: { id },
   });
   return success(res, null, "User deleted successfully");
+}));
+
+// Reset a user's password to the default — re-triggers onboarding on next login
+router.post('/:id/reset-password', authenticate, isAdmin, asyncHandler(async (req, res) => {
+    const id = Number(req.params.id);
+    const existingUser = await prisma.user.findUnique({ where: { id } });
+    if (!existingUser) throw new AppError('User not found', 404);
+    const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+    await prisma.user.update({
+        where: { id },
+        data: { password: hashedPassword, mustChangePassword: true },
+    });
+    return success(res, null, 'Password reset to default — user must set a new password on next login');
 }));
 
 module.exports = router;
