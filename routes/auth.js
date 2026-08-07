@@ -11,6 +11,7 @@ const asyncHandler = require('../utils/asyncHandler')
 const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
 const { sendEmail } = require('../utils/email')
+const { DEFAULT_PASSWORD } = require('../utils/constants')
 
 const JWT_SECRET = process.env.JWT_SECRET
 const ACCESS_TOKEN_EXPIRY = '6h'
@@ -268,6 +269,66 @@ router.post('/onboarding/send-code', authenticate, asyncHandler(async (req, res)
     })
 
     return success(res, null, 'Verification code sent')
+}))
+
+router.patch('/onboarding', authenticate, [
+    body('newPassword').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    handleValidation,
+], asyncHandler(async (req, res) => {
+    const { code, newPassword } = req.body
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } })
+    if (!user) throw new AppError('User not found', 404)
+
+    if (!user.emailVerified) {
+        const record = await prisma.verificationCode.findFirst({
+            where: { userId: user.id, consumed: false },
+            orderBy: { createdAt: 'desc' },
+        })
+        if (!record || record.expiresAt < new Date()) {
+            throw new AppError('Invalid or expired code', 400)
+        }
+        if (record.attempts >= 5) {
+            throw new AppError('Too many attempts. Request a new code.', 400)
+        }
+        if (typeof code !== 'string' || !(await bcrypt.compare(code, record.codeHash))) {
+            await prisma.verificationCode.update({
+                where: { id: record.id },
+                data: { attempts: { increment: 1 } },
+            })
+            throw new AppError('Invalid or expired code', 400)
+        }
+    }
+
+    const normalized = newPassword.trim()
+    if (normalized.length < 8) throw new AppError('Password must be at least 8 characters', 400)
+    if (normalized.toLowerCase() === DEFAULT_PASSWORD.toLowerCase()) {
+        throw new AppError('New password cannot be the default password', 400)
+    }
+    if (await bcrypt.compare(normalized, user.password)) {
+        throw new AppError('New password must be different from the current password', 400)
+    }
+
+    const hashedPassword = await bcrypt.hash(normalized, 10)
+
+    await prisma.$transaction([
+        prisma.verificationCode.updateMany({
+            where: { userId: user.id, consumed: false },
+            data: { consumed: true },
+        }),
+        prisma.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword, emailVerified: true, mustChangePassword: false },
+        }),
+    ])
+
+    return success(res, {
+        id: user.id,
+        email: user.email,
+        name: user.fullName,
+        role: user.role,
+        department: user.department,
+        onboarding: onboardingPayload({ emailVerified: true, mustChangePassword: false }),
+    }, 'Onboarding complete')
 }))
 
 module.exports = router
