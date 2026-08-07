@@ -14,7 +14,7 @@ const { parseBirthday } = require('../utils/birthday');
 const multer = require('multer')
 const { parseCsvUsers } = require('../utils/csvImport')
 
-const DEFAULT_PASSWORD = 'Steward@123'
+const { DEFAULT_PASSWORD } = require('../utils/constants')
 
 const birthdayIsValid = (value) => {
     if (value === undefined || value === null || String(value).trim() === '') return true

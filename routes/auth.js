@@ -15,6 +15,16 @@ const JWT_SECRET = process.env.JWT_SECRET
 const ACCESS_TOKEN_EXPIRY = '6h'
 const REFRESH_TOKEN_EXPIRY_DAYS = 7
 
+function onboardingPayload(user, passwordMatchesDefault = false) {
+    const needsEmailVerify = !user.emailVerified
+    const needsPasswordChange = user.mustChangePassword || passwordMatchesDefault
+    return {
+        required: needsEmailVerify || needsPasswordChange,
+        needsEmailVerify,
+        needsPasswordChange,
+    }
+}
+
 async function generateRefreshToken(userId) {
     const token = crypto.randomBytes(40).toString('hex')
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
