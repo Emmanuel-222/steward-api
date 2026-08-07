@@ -82,6 +82,7 @@ router.post('/login', [
     if(!passwordMatch) {
         throw new AppError('Invalid credentials', 401)
     }
+    const passwordMatchesDefault = await bcrypt.compare(DEFAULT_PASSWORD, existingUser.password)
     const token = jwt.sign(
         { 
             userId: existingUser.id, 
@@ -101,7 +102,8 @@ router.post('/login', [
             email: existingUser.email,
             name: existingUser.fullName,
             role: existingUser.role,
-            department: existingUser.department
+            department: existingUser.department,
+            onboarding: onboardingPayload(existingUser, passwordMatchesDefault),
         }
     }, 'Login is successful')
 }))
@@ -170,7 +172,8 @@ router.post('/refresh', [
             email: user.email,
             name: user.fullName,
             role: user.role,
-            department: user.department
+            department: user.department,
+            onboarding: onboardingPayload(user),
         }
     }, 'Tokens refreshed')
 }))
@@ -231,7 +234,8 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.fullName,
-        role: user.role
+        role: user.role,
+        onboarding: onboardingPayload(user),
     })
 }))
 
