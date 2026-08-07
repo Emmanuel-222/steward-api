@@ -23,9 +23,12 @@ model User {
   role          String         // "admin", "pastor", "leader", "steward"
   password      String
   birthday      DateTime?      // optional, DD/MM/YYYY, UTC midnight
+  emailVerified       Boolean            @default(true)
+  mustChangePassword  Boolean            @default(false)
   attendance    Attendance[]
   excuses       ExcuseRequest[]
   refreshTokens RefreshToken[]
+  verificationCodes   VerificationCode[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -83,4 +86,17 @@ model ExcuseRequest {
   attendance   Attendance[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model VerificationCode {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int      @default(0)
+  consumed   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
 }
