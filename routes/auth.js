@@ -283,6 +283,11 @@ router.patch('/onboarding', authenticate, [
     const user = await prisma.user.findUnique({ where: { id: req.user.userId } })
     if (!user) throw new AppError('User not found', 404)
 
+    const passwordMatchesDefault = await bcrypt.compare(DEFAULT_PASSWORD, user.password)
+    if (user.emailVerified && !user.mustChangePassword && !passwordMatchesDefault) {
+        throw new AppError('Nothing to complete', 403)
+    }
+
     if (!user.emailVerified) {
         const record = await prisma.verificationCode.findFirst({
             where: { userId: user.id, consumed: false },
