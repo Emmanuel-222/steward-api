@@ -349,7 +349,7 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
                 email: row.email,
                 phone: row.phone,
                 department: row.department,
-                role: 'steward',
+                role: row.role,
                 birthday: row.birthday,
                 password: hashedPassword,
                 emailVerified: false,
