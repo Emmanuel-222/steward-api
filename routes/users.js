@@ -289,7 +289,7 @@ router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async
       email,
       phone,
       department,
-      role,
+      role: role.toLowerCase(),
       password: hashedPassword,
       birthday: birthday ? parseBirthday(birthday) : null,
     },
@@ -422,7 +422,7 @@ router.patch("/:id", authenticate, isAdmin, updateUserValidation, asyncHandler(a
       email: email || existingUser.email,
       phone: phone || existingUser.phone,
       department: department || existingUser.department,
-      role: role || existingUser.role,
+      role: (role || existingUser.role).toLowerCase(),
       birthday: birthdayValue,
     },
     select: {

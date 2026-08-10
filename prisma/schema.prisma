@@ -37,7 +37,7 @@ model RefreshToken {
   id        Int      @id @default(autoincrement())
   token     String   @unique
   userId    Int
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
   revoked   Boolean  @default(false)
@@ -65,10 +65,10 @@ model Attendance {
   markedAt    DateTime @default(now())
   userId      Int
   meetingId   Int
-  user        User     @relation(fields: [userId], references: [id])
-  meeting     Meeting  @relation(fields: [meetingId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   excuseRequestId Int?
-  excuseRequest   ExcuseRequest? @relation(fields: [excuseRequestId], references: [id])
+  excuseRequest   ExcuseRequest? @relation(fields: [excuseRequestId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
 
   @@unique([userId, meetingId])
@@ -81,8 +81,8 @@ model ExcuseRequest {
   adminComment String?
   stewardId    Int
   meetingId    Int
-  steward      User     @relation(fields: [stewardId], references: [id])
-  meeting      Meeting  @relation(fields: [meetingId], references: [id])
+  steward      User     @relation(fields: [stewardId], references: [id], onDelete: Cascade)
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
   attendance   Attendance[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -91,7 +91,7 @@ model ExcuseRequest {
 model VerificationCode {
   id         Int      @id @default(autoincrement())
   userId     Int
-  user       User     @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   codeHash   String
   expiresAt  DateTime
   attempts   Int      @default(0)
