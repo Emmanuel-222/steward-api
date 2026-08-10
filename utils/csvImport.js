@@ -44,7 +44,7 @@ function parseCsvUsers(csvText) {
             if (!normalized) {
                 failures.push({ row: line, field: 'role', message: 'Role must be steward, leader or pastor' })
             } else {
-                role = normalized
+                role = normalized.toLowerCase()
             }
         }
 
