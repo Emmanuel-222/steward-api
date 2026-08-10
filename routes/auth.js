@@ -15,8 +15,16 @@ const { sendEmail } = require('../utils/email')
 const { DEFAULT_PASSWORD } = require('../utils/constants')
 
 const JWT_SECRET = process.env.JWT_SECRET
-const ACCESS_TOKEN_EXPIRY = '6h'
+const ACCESS_TOKEN_EXPIRY = '30m'
 const REFRESH_TOKEN_EXPIRY_DAYS = 7
+const REFRESH_COOKIE_NAME = 'refresh_token'
+const REFRESH_COOKIE_OPTIONS = {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+}
 
 function onboardingPayload(user, passwordMatchesDefault = false) {
     const needsEmailVerify = !user.emailVerified
@@ -95,9 +103,9 @@ router.post('/login', [
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     )
     const refreshToken = await generateRefreshToken(existingUser.id)
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, REFRESH_COOKIE_OPTIONS)
     return success(res, {
         token,
-        refreshToken,
         user: {
             id: existingUser.id,
             email: existingUser.email,
@@ -115,26 +123,18 @@ router.post('/login', [
  *   post:
  *     summary: Refresh access token
  *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               refreshToken:
- *                 type: string
+ *     description: Reads the httpOnly refresh_token cookie, rotates it and issues a new access token.
  *     responses:
  *       200:
  *         description: Tokens refreshed
  *       401:
  *         description: Invalid or expired refresh token
  */
-router.post('/refresh', [
-    body('refreshToken').notEmpty().withMessage('Refresh token is required'),
-    handleValidation,
-], asyncHandler(async (req, res) => {
-    const { refreshToken } = req.body
+router.post('/refresh', asyncHandler(async (req, res) => {
+    const refreshToken = req.cookies[REFRESH_COOKIE_NAME]
+    if (!refreshToken) {
+        throw new AppError('Invalid or expired refresh token', 401)
+    }
     const stored = await prisma.refreshToken.findUnique({
         where: { token: refreshToken }
     })
@@ -164,10 +164,10 @@ router.post('/refresh', [
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     )
     const newRefreshToken = await generateRefreshToken(user.id)
+    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, REFRESH_COOKIE_OPTIONS)
 
     return success(res, {
         token: newAccessToken,
-        refreshToken: newRefreshToken,
         user: {
             id: user.id,
             email: user.email,
@@ -185,26 +185,20 @@ router.post('/refresh', [
  *   post:
  *     summary: Logout and revoke refresh token
  *     tags: [Auth]
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               refreshToken:
- *                 type: string
+ *     description: Revokes the refresh_token cookie and clears it.
  *     responses:
  *       200:
  *         description: Logged out successfully
  */
 router.post('/logout', asyncHandler(async (req, res) => {
-    const { refreshToken } = req.body
+    const refreshToken = req.cookies[REFRESH_COOKIE_NAME]
     if (refreshToken) {
         await prisma.refreshToken.updateMany({
             where: { token: refreshToken, revoked: false },
             data: { revoked: true }
         })
     }
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' })
     return success(res, null, 'Logged out successfully')
 }))
 
