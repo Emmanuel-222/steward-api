@@ -14,6 +14,8 @@ const { parseBirthday } = require('../utils/birthday');
 const multer = require('multer')
 const { parseCsvUsers } = require('../utils/csvImport')
 
+const { PASSWORD_POLICY_REGEX, PASSWORD_ERROR_MESSAGE } = require('../utils/passwordPolicy')
+
 const { DEFAULT_PASSWORD } = require('../utils/constants')
 
 const birthdayIsValid = (value) => {
@@ -32,7 +34,7 @@ const createUserValidation = [
     body('phone').trim().notEmpty().withMessage('Phone number is required'),
     body('department').trim().notEmpty().withMessage('Department is required'),
     body('role').trim().notEmpty().withMessage('Role is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('password').matches(PASSWORD_POLICY_REGEX).withMessage(PASSWORD_ERROR_MESSAGE),
     body('birthday').optional().custom(birthdayIsValid).withMessage('Birthday must be a valid date in DD/MM/YYYY format'),
     handleValidation,
 ]
@@ -349,7 +351,7 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
                 email: row.email,
                 phone: row.phone,
                 department: row.department,
-                role: 'steward',
+                role: row.role,
                 birthday: row.birthday,
                 password: hashedPassword,
                 emailVerified: false,

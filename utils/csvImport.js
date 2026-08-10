@@ -2,6 +2,7 @@ const { parse } = require('csv-parse/sync')
 const { parseBirthday } = require('./birthday')
 
 const REQUIRED_COLUMNS = ['fullname', 'email', 'phone', 'department']
+const ROLE_ALIASES = { steward: 'Steward', leader: 'Leader', pastor: 'Pastor' }
 const MAX_ROWS = 1000
 
 function parseCsvUsers(csvText) {
@@ -36,6 +37,16 @@ function parseCsvUsers(csvText) {
         const phone = get(cells, 'phone')
         const department = get(cells, 'department')
         const birthdayRaw = get(cells, 'birthday')
+        const roleRaw = get(cells, 'role')
+        let role = 'Steward'
+        if (roleRaw) {
+            const normalized = ROLE_ALIASES[roleRaw.toLowerCase()]
+            if (!normalized) {
+                failures.push({ row: line, field: 'role', message: 'Role must be steward, leader or pastor' })
+            } else {
+                role = normalized
+            }
+        }
 
         if (!fullName) failures.push({ row: line, field: 'fullName', message: 'Full name is required' })
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) failures.push({ row: line, field: 'email', message: 'Invalid email address' })
@@ -50,7 +61,7 @@ function parseCsvUsers(csvText) {
         const rowHasErrors = failures.some(f => f.row === line)
         if (!rowHasErrors) {
             seenEmails.add(email)
-            validRows.push({ line, fullName, email, phone, department, birthday: birthdayRaw ? parseBirthday(birthdayRaw) : null })
+            validRows.push({ line, fullName, email, phone, department, role, birthday: birthdayRaw ? parseBirthday(birthdayRaw) : null })
         }
     })
     return { validRows, failures }

@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt')
 const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const { body } = require('express-validator')
+const { PASSWORD_POLICY_REGEX, PASSWORD_ERROR_MESSAGE } = require('../utils/passwordPolicy')
 const authenticate = require('../middleware/authenticate')
 const handleValidation = require('../middleware/validate')
 const { prisma } = require('../prisma')
@@ -276,7 +277,7 @@ router.post('/onboarding/send-code', authenticate, asyncHandler(async (req, res)
 }))
 
 router.patch('/onboarding', authenticate, [
-    body('newPassword').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('newPassword').matches(PASSWORD_POLICY_REGEX).withMessage(PASSWORD_ERROR_MESSAGE),
     handleValidation,
 ], asyncHandler(async (req, res) => {
     const { code, newPassword } = req.body
