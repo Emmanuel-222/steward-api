@@ -169,14 +169,13 @@ steward-api/
 
 Base URL: `https://steward-api-nlga.onrender.com` (API docs at `/api-docs`)
 
-Test login (the seeded admin password from `utils/constants.js`):
+Every endpoint requires authentication. To try the API, seed your own admin locally first:
 
 ```bash
-curl https://steward-api-nlga.onrender.com/auth/login \
-  -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@steward.com","password":"Steward@123"}'
+node seed.js
 ```
+
+Use the credentials created by the seed script to log in. Users created by admins receive a default password (see `utils/constants.js`) and are required to change it during first-login onboarding.
 
 ## License
 
