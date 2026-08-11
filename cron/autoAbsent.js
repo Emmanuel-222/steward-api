@@ -26,8 +26,8 @@ const autoMarkAbsent = async () => {
             return null;
         }
 
-        const date = new Date(dateBase);
-        date.setHours(hours, minutes, 0, 0);
+        const base = new Date(dateBase);
+        const date = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0, 0);
         return date;
     };
 
