@@ -11,20 +11,27 @@ Backend API for the Steward Attendance System — tracks steward attendance at c
 - **Framework**: Express 5
 - **Database**: PostgreSQL
 - **ORM**: Prisma
-- **Auth**: JWT access tokens + refresh tokens
+- **Auth**: JWT access tokens + rotating refresh tokens in an httpOnly cookie
+- **Cookies**: cookie-parser
 - **Rate Limiting**: express-rate-limit
 - **Validation**: express-validator
+- **CSV Import**: multer + csv-parse
 - **Scheduling**: node-cron
+- **Email**: Resend
+- **Security/Security headers**: helmet, morgan
 - **Docs**: Swagger (OpenAPI)
 
 ## Features
 
-- JWT authentication with refresh token rotation
+- JWT authentication with rotating refresh tokens stored in an httpOnly cookie (revoked on logout)
 - Role-based authorization (admin, pastor, leader, steward)
 - Attendance marking with auto-late detection (marks as late if after meeting cutoff)
+- QR/barcode check-in link validation
 - Excuse request submission, approval, and rejection
 - Automated absence marking via cron job (mark unmarked stewards absent after cutoff)
 - Refresh token cleanup cron job
+- Bulk steward import from CSV
+- Email delivery via Resend (onboarding codes, notifications)
 - Full CRUD for meetings, users/stewards
 - Swagger API documentation
 - CORS configuration for multiple origins
@@ -52,14 +59,18 @@ npm start
 ```env
 DATABASE_URL=postgresql://postgres:PASSWORD@localhost:5432/stewarddb
 JWT_SECRET=your_jwt_secret
-CORS_ORIGINS=http://localhost:5173,https://your-frontend.vercel.app
+CORS_ORIGINS=http://localhost:5173,https://dc-attendance-gray.vercel.app
+RESEND_API_KEY=your_resend_api_key
 ```
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `JWT_SECRET` | Yes | Secret for signing JWT tokens |
-| `CORS_ORIGINS` | No | Comma-separated allowed origins |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins (frontends) |
+| `RESEND_API_KEY` | No | Resend API key for email delivery |
+| `FROM_ADDRESS` | No | Sender email for outgoing mail (default: `Steward Registrar <onboarding@resend.dev>`) |
+| `FRONTEND_URL` | No | Frontend base URL used in check-in links (default: `http://localhost:5173`) |
 | `NODE_ENV` | No | `production` or `development` |
 
 ## API Endpoints
@@ -133,10 +144,11 @@ steward-api/
 ├── prisma/
 │   └── schema.prisma        # Database schema
 ├── routes/
-│   ├── auth.js              # Auth endpoints
-│   ├── users.js             # User CRUD endpoints
+│   ├── auth.js              # Auth endpoints (httpOnly refresh cookie)
+│   ├── users.js             # User CRUD + CSV import endpoints
 │   ├── meetings.js          # Meeting CRUD endpoints
-│   └── attendance.js        # Attendance endpoints
+│   ├── attendance.js        # Attendance endpoints
+│   └── checkIn.js           # QR/barcode check-in link validation
 ├── utils/
 │   ├── asyncHandler.js      # Async error wrapper
 │   ├── AppError.js          # Custom error class
@@ -150,20 +162,20 @@ steward-api/
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
-| `autoAbsent` | Every 5 minutes | Marks unmarked stewards as absent for meetings past their end time |
-| `cleanupTokens` | Every 6 hours | Deletes expired refresh tokens from the database |
+| `autoAbsent` | Every minute | Marks unmarked stewards as absent for meetings past their end time |
+| `cleanupTokens` | Daily at midnight | Deletes expired refresh tokens from the database |
 
 ## Live Demo
 
-Base URL: `https://steward-api-production.up.railway.app`
+Base URL: `https://steward-api-nlga.onrender.com` (API docs at `/api-docs`)
 
-Test login:
+Test login (the seeded admin password from `utils/constants.js`):
 
 ```bash
-curl https://steward-api-production.up.railway.app/auth/login \
+curl https://steward-api-nlga.onrender.com/auth/login \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@steward.com","password":"admin123"}'
+  -d '{"email":"admin@steward.com","password":"Steward@123"}'
 ```
 
 ## License
