@@ -75,8 +75,15 @@ router.post('/', authenticate, isAuthorized(['admin', 'pastor']), markAttendance
             if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
             if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
 
-            const cutoff = new Date(meeting.date);
-            cutoff.setHours(hours, minutes, 0, 0);
+            const cutoff = new Date(
+                meeting.date.getFullYear(),
+                meeting.date.getMonth(),
+                meeting.date.getDate(),
+                hours,
+                minutes,
+                0,
+                0
+            );
 
             if (new Date() > cutoff) {
             finalStatus = "late"
