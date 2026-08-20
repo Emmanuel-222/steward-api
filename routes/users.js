@@ -13,6 +13,7 @@ const { success, created } = require('../utils/response');
 const { parseBirthday } = require('../utils/birthday');
 const multer = require('multer')
 const { parseCsvUsers } = require('../utils/csvImport')
+const { normalizeRole, normalizeDepartment, normalizePhone } = require('../utils/normalize')
 
 const { PASSWORD_POLICY_REGEX, PASSWORD_ERROR_MESSAGE } = require('../utils/passwordPolicy')
 
@@ -277,19 +278,22 @@ router.get("/:id", authenticate, asyncHandler(async (req, res) => {
  */
 router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async (req, res) => {
   const { fullName, email, phone, department, role, password, birthday } = req.body;
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-  });
-  if (existingUser)
-    throw new AppError("Email already in use", 400);
+  const normalizedRole = normalizeRole(role);
+  if (!normalizedRole.value) throw new AppError(`Unknown role — did you mean '${normalizedRole.suggestion}'?`, 400);
+  const normalizedDepartment = normalizeDepartment(department);
+  if (!normalizedDepartment.value) throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400);
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) throw new AppError('Invalid phone number — use a valid Nigerian number, e.g. 08012345678', 400);
+  const existingUser = await prisma.user.findUnique({ where: { email } });
+  if (existingUser) throw new AppError("Email already in use", 400);
   const hashedPassword = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
     data: {
       fullName,
-      email,
-      phone,
-      department,
-      role: role.toLowerCase(),
+      email: email.trim().toLowerCase(),
+      phone: normalizedPhone,
+      department: normalizedDepartment.value,
+      role: normalizedRole.value,
       password: hashedPassword,
       birthday: birthday ? parseBirthday(birthday) : null,
     },
@@ -318,13 +322,13 @@ router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async
  *                 format: binary
  *     responses:
  *       200:
- *         description: Import report
+ *         description: Import report (failures per row; corrections lists role/department values auto-corrected to the standard spelling)
  *       400:
  *         description: Invalid CSV or file too large
  */
 router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req, res) => {
     if (!req.file) throw new AppError('CSV file is required (field name: "file")', 400)
-    const { validRows, failures } = parseCsvUsers(req.file.buffer.toString('utf8'))
+    const { validRows, failures, corrections } = parseCsvUsers(req.file.buffer.toString('utf8'))
 
     const emails = validRows.map(row => row.email)
     const existing = await prisma.user.findMany({
@@ -366,6 +370,7 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
         skipped: failures.length,
         defaultPassword: DEFAULT_PASSWORD,
         failures,
+        corrections,
     }, 'CSV import completed')
 }));
 
@@ -409,20 +414,24 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
 router.patch("/:id", authenticate, isAdmin, updateUserValidation, asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   const { fullName, email, phone, department, role, birthday } = req.body;
-  const existingUser = await prisma.user.findUnique({
-    where: { id },
-  });
+  const existingUser = await prisma.user.findUnique({ where: { id } });
   if (!existingUser) throw new AppError("User not found", 404);
+  const normalizedRole = normalizeRole(role || existingUser.role);
+  if (!normalizedRole.value) throw new AppError(`Unknown role — did you mean '${normalizedRole.suggestion}'?`, 400);
+  const normalizedDepartment = normalizeDepartment(department || existingUser.department);
+  if (!normalizedDepartment.value) throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400);
+  const phoneToSave = phone ? normalizePhone(phone) : null;
+  if (phone && !phoneToSave) throw new AppError('Invalid phone number — use a valid Nigerian number, e.g. 08012345678', 400);
   const birthdayValue =
     birthday === undefined ? existingUser.birthday : birthday ? parseBirthday(birthday) : null;
   const updatedUser = await prisma.user.update({
     where: { id },
     data: {
       fullName: fullName || existingUser.fullName,
-      email: email || existingUser.email,
-      phone: phone || existingUser.phone,
-      department: department || existingUser.department,
-      role: (role || existingUser.role).toLowerCase(),
+      email: email ? email.trim().toLowerCase() : existingUser.email,
+      phone: phoneToSave || existingUser.phone,
+      department: normalizedDepartment.value,
+      role: normalizedRole.value,
       birthday: birthdayValue,
     },
     select: {
