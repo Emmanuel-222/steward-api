@@ -284,7 +284,7 @@ router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async
   if (!normalizedDepartment.value) throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400);
   const normalizedPhone = normalizePhone(phone);
   if (!normalizedPhone) throw new AppError('Invalid phone number — use a valid Nigerian number, e.g. 08012345678', 400);
-  const existingUser = await prisma.user.findUnique({ where: { email } });
+  const existingUser = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (existingUser) throw new AppError("Email already in use", 400);
   const hashedPassword = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
