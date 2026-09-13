@@ -10,6 +10,54 @@ const asyncHandler = require('../utils/asyncHandler')
 const AppError = require('../utils/AppError')
 const { success, created } = require('../utils/response')
 
+function parseMeetingTime(meeting, timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return null;
+    
+    const trimmedTime = timeStr.trim();
+    const match12 = trimmedTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    
+    if (!match12) return null;
+    
+    let [_, h, m, modifier] = match12;
+    let hours = parseInt(h, 10);
+    const minutes = parseInt(m, 10);
+    
+    if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+    if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    
+    const baseDate = new Date(meeting.date);
+    const date = new Date(
+        baseDate.getFullYear(),
+        baseDate.getMonth(),
+        baseDate.getDate(),
+        hours,
+        minutes,
+        0,
+        0
+    );
+    
+    return date;
+}
+
+function crossesMidnight(meeting) {
+    if (!meeting.startTime || !meeting.endTime) return false;
+    const start = parseMeetingTime(meeting, meeting.startTime);
+    const end = parseMeetingTime(meeting, meeting.endTime);
+    if (!start || !end) return false;
+    return end < start;
+}
+
+function getMeetingCutoff(meeting) {
+    const cutoff = parseMeetingTime(meeting, meeting.cutoffTime);
+    if (!cutoff) return null;
+    
+    if (crossesMidnight(meeting)) {
+        cutoff.setDate(cutoff.getDate() + 1);
+    }
+    
+    return cutoff;
+}
+
 const markAttendanceValidation = [
     body('userId').isInt().withMessage('User ID must be a number'),
     body('meetingId').isInt().withMessage('Meeting ID must be a number'),
@@ -64,31 +112,10 @@ router.post('/', authenticate, isAuthorized(['admin', 'pastor']), markAttendance
 
     let finalStatus = status || "present"
     if (finalStatus === "present") {
-        const trimmedTime = meeting.cutoffTime.trim();
-        const timeMatch = trimmedTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        
-        if (timeMatch) {
-            let [_, h, m, modifier] = timeMatch;
-            let hours = parseInt(h, 10);
-            const minutes = parseInt(m, 10);
-            
-            if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
-            if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
-
-            const cutoff = new Date(
-                meeting.date.getFullYear(),
-                meeting.date.getMonth(),
-                meeting.date.getDate(),
-                hours,
-                minutes,
-                0,
-                0
-            );
-
-            if (new Date() > cutoff) {
+        const cutoff = getMeetingCutoff(meeting)
+        if (cutoff && new Date() > cutoff) {
             finalStatus = "late"
         }
-      }
     }
 
     const attendance = await prisma.attendance.upsert({

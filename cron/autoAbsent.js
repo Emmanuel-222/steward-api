@@ -1,36 +1,54 @@
 const cron = require('node-cron')
 const { prisma } = require('../prisma')
 
-const autoMarkAbsent = async () => {
-    // Helper to parse "11:20 AM" or "14:05" into a Date object for today
-    const parseTime = (dateBase, timeStr) => {
-        if (!timeStr || typeof timeStr !== 'string') return null;
-        
-        const trimmedTime = timeStr.trim();
-        const match12 = trimmedTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        const match24 = trimmedTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-        
-        let hours, minutes;
+function parseMeetingTime(meeting, timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return null;
+    
+    const trimmedTime = timeStr.trim();
+    const match12 = trimmedTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    const match24 = trimmedTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    
+    let hours, minutes;
 
-        if (match12) {
-            let [_, h, m, modifier] = match12;
-            hours = parseInt(h, 10);
-            minutes = parseInt(m, 10);
-            if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
-            if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
-        } else if (match24) {
-            let [_, h, m] = match24;
-            hours = parseInt(h, 10);
-            minutes = parseInt(m, 10);
-        } else {
-            return null;
-        }
+    if (match12) {
+        let [_, h, m, modifier] = match12;
+        hours = parseInt(h, 10);
+        minutes = parseInt(m, 10);
+        if (modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+    } else if (match24) {
+        let [_, h, m] = match24;
+        hours = parseInt(h, 10);
+        minutes = parseInt(m, 10);
+    } else {
+        return null;
+    }
 
-        const base = new Date(dateBase);
-        const date = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0, 0);
-        return date;
-    };
+    const base = new Date(meeting.date);
+    const date = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0, 0);
+    return date;
+}
 
+function crossesMidnight(meeting) {
+    if (!meeting.startTime || !meeting.endTime) return false;
+    const start = parseMeetingTime(meeting, meeting.startTime);
+    const end = parseMeetingTime(meeting, meeting.endTime);
+    if (!start || !end) return false;
+    return end < start;
+}
+
+function getMeetingEndTime(meeting) {
+    const endTime = parseMeetingTime(meeting, meeting.endTime);
+    if (!endTime) return null;
+    
+    if (crossesMidnight(meeting)) {
+        endTime.setDate(endTime.getDate() + 1);
+    }
+    
+    return endTime;
+}
+
+const autoMarkAbsent = () => {
     // Run every minute
     cron.schedule('* * * * *', async () => {
         const now = new Date();
@@ -59,7 +77,7 @@ const autoMarkAbsent = async () => {
             }
 
             for (const meeting of meetings) {
-                const endDateTime = parseTime(meeting.date, meeting.endTime);
+                const endDateTime = getMeetingEndTime(meeting);
                 
                 if (!endDateTime) {
                     console.error(`[Cron] Could not parse endTime "${meeting.endTime}" for meeting ID ${meeting.id}`);
