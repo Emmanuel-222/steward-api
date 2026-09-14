@@ -365,4 +365,79 @@ router.patch('/onboarding', authenticate, [
     }, 'Onboarding complete')
 }))
 
+// Forgot password - request reset token (public, rate-limited)
+router.post('/forgot-password', [
+    body('email').isEmail().withMessage('A valid email is required'),
+    handleValidation,
+], asyncHandler(async (req, res) => {
+    const { email } = req.body
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) {
+        // Don't reveal if email exists - always return success
+        return success(res, null, 'If an account exists, a reset link has been sent')
+    }
+
+    const resetToken = jwt.sign(
+        { userId: user.id, purpose: 'password-reset' },
+        JWT_SECRET,
+        { expiresIn: '15m' }
+    )
+
+    const resetUrl = `${process.env.FRONTEND_URL || 'https://steward-fe.pages.dev'}/reset-password?token=${resetToken}`
+
+    await sendEmail({
+        to: user.email,
+        subject: 'Steward Registrar - Password Reset',
+        html: `
+            <p>Hi ${user.fullName},</p>
+            <p>You requested a password reset. Click the link below to set a new password:</p>
+            <p><a href="${resetUrl}">${resetUrl}</a></p>
+            <p>This link expires in 15 minutes.</p>
+            <p>If you didn't request this, please ignore this email.</p>
+        `,
+    })
+
+    return success(res, null, 'If an account exists, a reset link has been sent')
+}))
+
+// Reset password with token (public)
+router.post('/reset-password', [
+    body('token').notEmpty().withMessage('Reset token is required'),
+    body('newPassword').matches(PASSWORD_POLICY_REGEX).withMessage(PASSWORD_ERROR_MESSAGE),
+    handleValidation,
+], asyncHandler(async (req, res) => {
+    const { token, newPassword } = req.body
+
+    let payload
+    try {
+        payload = jwt.verify(token, JWT_SECRET)
+    } catch {
+        throw new AppError('Invalid or expired reset token', 400)
+    }
+
+    if (payload.purpose !== 'password-reset') {
+        throw new AppError('Invalid reset token', 400)
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } })
+    if (!user) throw new AppError('User not found', 404)
+
+    const normalized = newPassword.trim()
+    if (normalized.length < 8) throw new AppError('Password must be at least 8 characters', 400)
+    if (normalized.toLowerCase() === DEFAULT_PASSWORD.toLowerCase()) {
+        throw new AppError('New password cannot be the default password', 400)
+    }
+    if (await bcrypt.compare(normalized, user.password)) {
+        throw new AppError('New password must be different from the current password', 400)
+    }
+
+    const hashedPassword = await bcrypt.hash(normalized, 10)
+    await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword, mustChangePassword: false },
+    })
+
+    return success(res, null, 'Password reset successful')
+}))
+
 module.exports = router
