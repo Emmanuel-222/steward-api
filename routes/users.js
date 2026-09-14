@@ -190,6 +190,42 @@ router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
   });
 }));
 
+// Update own profile (self-service)
+router.patch("/me/profile", authenticate, [
+  body('fullName').optional().trim().notEmpty().withMessage('Full name cannot be empty'),
+  body('phone').optional().trim().notEmpty().withMessage('Phone number cannot be empty'),
+  body('birthday').optional().custom(birthdayIsValid).withMessage('Birthday must be a valid date in DD/MM/YYYY format'),
+  handleValidation,
+], asyncHandler(async (req, res) => {
+  const { fullName, phone, birthday } = req.body;
+  const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+  if (!user) throw new AppError("User not found", 404);
+
+  const birthdayValue =
+    birthday === undefined ? user.birthday : birthday ? parseBirthday(birthday) : null;
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      fullName: fullName !== undefined ? fullName : user.fullName,
+      phone: phone !== undefined ? phone : user.phone,
+      birthday: birthdayValue,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      department: true,
+      role: true,
+      birthday: true,
+      updatedAt: true,
+    },
+  });
+
+  return success(res, updatedUser, "Profile updated");
+}));
+
 // Get a single user
 /**
  * @swagger
