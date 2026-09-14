@@ -20,6 +20,36 @@ setInterval(() => {
     }
 }, 60 * 1000)
 
+function parseMeetingTime(meeting, timeStr) {
+    if (!timeStr || typeof timeStr !== 'string') return null
+    const match = timeStr.trim().match(/(\d+):(\d+)\s*(AM|PM)/i)
+    if (!match) return null
+    let hours = parseInt(match[1], 10)
+    const minutes = parseInt(match[2], 10)
+    const modifier = match[3].toUpperCase()
+    if (modifier === 'PM' && hours < 12) hours += 12
+    if (modifier === 'AM' && hours === 12) hours = 0
+    const base = new Date(meeting.date)
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate(), hours, minutes, 0, 0)
+}
+
+function crossesMidnight(meeting) {
+    if (!meeting.startTime || !meeting.endTime) return false
+    const start = parseMeetingTime(meeting, meeting.startTime)
+    const end = parseMeetingTime(meeting, meeting.endTime)
+    if (!start || !end) return false
+    return end < start
+}
+
+function getMeetingCutoff(meeting) {
+    const cutoff = parseMeetingTime(meeting, meeting.cutoffTime)
+    if (!cutoff) return null
+    if (crossesMidnight(meeting)) {
+        cutoff.setDate(cutoff.getDate() + 1)
+    }
+    return cutoff
+}
+
 const checkInLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -97,11 +127,17 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
         }, `You're already checked in, ${user.fullName}!`)
     }
 
+    const cutoff = getMeetingCutoff(meeting)
+    let status = 'present'
+    if (cutoff && new Date() > cutoff) {
+        status = 'late'
+    }
+
     await prisma.attendance.create({
         data: {
             userId: user.id,
             meetingId: meeting.id,
-            status: 'present',
+            status,
             markedAt: new Date()
         }
     })
@@ -111,7 +147,10 @@ router.post('/check-in', checkInLimiter, checkInValidation, asyncHandler(async (
     return success(res, {
         stewardName: user.fullName,
         isDuplicate: false,
-    }, `You're checked in, ${user.fullName}!`)
+        status,
+    }, status === 'late'
+        ? `You're checked in but late, ${user.fullName}.`
+        : `You're checked in, ${user.fullName}!`)
 }))
 
 module.exports = router

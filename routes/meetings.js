@@ -26,6 +26,17 @@ const meetingValidation = [
     handleValidation,
 ]
 
+const meetingUpdateValidation = [
+    body('title').optional().trim().notEmpty().withMessage('Title cannot be empty'),
+    body('type').optional().trim().notEmpty().withMessage('Type cannot be empty'),
+    body('date').optional().isISO8601().withMessage('A valid date is required'),
+    body('startTime').optional().trim().notEmpty().withMessage('Start time cannot be empty'),
+    body('cutoffTime').optional().trim().notEmpty().withMessage('Cutoff time cannot be empty'),
+    body('endTime').optional().trim().notEmpty().withMessage('End time cannot be empty'),
+    body('location').optional().trim().notEmpty().withMessage('Location cannot be empty'),
+    handleValidation,
+]
+
 /**
  * @swagger
  * /meetings:
@@ -222,7 +233,7 @@ router.post('/', authenticate, isAdmin, meetingValidation, asyncHandler(async (r
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.patch('/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
+router.patch('/:id', authenticate, isAdmin, meetingUpdateValidation, asyncHandler(async (req, res) => {
     const id = Number(req.params.id)
     const { title, type, date, startTime, cutoffTime, location, endTime, status } = req.body
     const meeting = await prisma.meeting.findUnique({
@@ -232,14 +243,14 @@ router.patch('/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
     const updatedMeeting = await prisma.meeting.update({
         where: { id },
         data: {
-            title: title || meeting.title,
-            type: type || meeting.type,
+            title: title !== undefined ? title : meeting.title,
+            type: type !== undefined ? type : meeting.type,
             date: date ? new Date(date) : meeting.date,
-            cutoffTime: cutoffTime || meeting.cutoffTime,
-            startTime: startTime || meeting.startTime,
-            endTime: endTime || meeting.endTime,
-            location: location || meeting.location,
-            status: status || meeting.status
+            cutoffTime: cutoffTime !== undefined ? cutoffTime : meeting.cutoffTime,
+            startTime: startTime !== undefined ? startTime : meeting.startTime,
+            endTime: endTime !== undefined ? endTime : meeting.endTime,
+            location: location !== undefined ? location : meeting.location,
+            status: status !== undefined ? status : meeting.status,
         }
     })
     return success(res, { updatedMeeting }, "Meeting updated successfully!")

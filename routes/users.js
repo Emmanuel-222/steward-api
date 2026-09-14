@@ -418,11 +418,11 @@ router.patch("/:id", authenticate, isAdmin, updateUserValidation, asyncHandler(a
   const updatedUser = await prisma.user.update({
     where: { id },
     data: {
-      fullName: fullName || existingUser.fullName,
-      email: email || existingUser.email,
-      phone: phone || existingUser.phone,
-      department: department || existingUser.department,
-      role: (role || existingUser.role).toLowerCase(),
+      fullName: fullName !== undefined ? fullName : existingUser.fullName,
+      email: email !== undefined ? email : existingUser.email,
+      phone: phone !== undefined ? phone : existingUser.phone,
+      department: department !== undefined ? department : existingUser.department,
+      role: role !== undefined ? role.toLowerCase() : existingUser.role,
       birthday: birthdayValue,
     },
     select: {
