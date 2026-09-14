@@ -234,6 +234,36 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
     })
 }))
 
+router.patch('/change-password', authenticate, [
+    body('currentPassword').notEmpty().withMessage('Current password is required'),
+    body('newPassword').matches(PASSWORD_POLICY_REGEX).withMessage(PASSWORD_ERROR_MESSAGE),
+    handleValidation,
+], asyncHandler(async (req, res) => {
+    const { currentPassword, newPassword } = req.body
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } })
+    if (!user) throw new AppError('User not found', 404)
+
+    const passwordMatch = await bcrypt.compare(currentPassword, user.password)
+    if (!passwordMatch) throw new AppError('Current password is incorrect', 400)
+
+    const normalized = newPassword.trim()
+    if (normalized.length < 8) throw new AppError('Password must be at least 8 characters', 400)
+    if (normalized.toLowerCase() === DEFAULT_PASSWORD.toLowerCase()) {
+        throw new AppError('New password cannot be the default password', 400)
+    }
+    if (await bcrypt.compare(normalized, user.password)) {
+        throw new AppError('New password must be different from the current password', 400)
+    }
+
+    const hashedPassword = await bcrypt.hash(normalized, 10)
+    await prisma.user.update({
+        where: { id: user.id },
+        data: { password: hashedPassword, mustChangePassword: false },
+    })
+
+    return success(res, null, 'Password changed successfully')
+}))
+
 const codeCooldowns = new Map() // userId -> last send timestamp (ms)
 
 router.post('/onboarding/send-code', authenticate, asyncHandler(async (req, res) => {
