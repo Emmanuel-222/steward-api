@@ -71,6 +71,7 @@ RESEND_API_KEY=your_resend_api_key
 | `RESEND_API_KEY` | No | Resend API key for email delivery |
 | `FROM_ADDRESS` | No | Sender email for outgoing mail (default: `Steward Registrar <onboarding@resend.dev>`) |
 | `FRONTEND_URL` | No | Frontend base URL used in check-in links (default: `http://localhost:5173`) |
+| `TZ` | Recommended | Server timezone. Must match the church's local timezone (`Africa/Lagos`) so the `autoAbsent` cron interprets meeting wall-clock times correctly. Hosts default to UTC. |
 | `NODE_ENV` | No | `production` or `development` |
 
 ## API Endpoints
@@ -164,6 +165,8 @@ steward-api/
 |-----|----------|-------------|
 | `autoAbsent` | Every minute | Marks unmarked stewards as absent for meetings past their end time |
 | `cleanupTokens` | Daily at midnight | Deletes expired refresh tokens from the database |
+
+> **Timezone:** meeting `date` is stored as UTC midnight and `startTime`/`endTime` are wall-clock strings. The `autoAbsent` cron builds its cutoff in the server's local timezone, so the host `TZ` must match the church's timezone (`Africa/Lagos`). On a UTC host, auto-absent fires one hour late.
 
 ## Live Demo
 
