@@ -159,6 +159,15 @@ steward-api/
 └── app.js                   # Express app entry point
 ```
 
+## Tests
+
+```bash
+npm test
+```
+
+Runs the unit suite with Node's built-in test runner (`node --test test/*.test.js`). CI
+(`.github/workflows/ci.yml`) runs it on every push and pull request to `main`.
+
 ## Cron Jobs
 
 | Job | Schedule | Description |
