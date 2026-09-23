@@ -23,7 +23,10 @@ const REFRESH_COOKIE_OPTIONS = {
     secure: true,
     sameSite: 'none',
     path: '/',
-    maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+}
+
+function refreshCookieOptions(expiresAt) {
+    return { ...REFRESH_COOKIE_OPTIONS, maxAge: Math.max(0, expiresAt.getTime() - Date.now()) }
 }
 
 function onboardingPayload(user, passwordMatchesDefault = false) {
@@ -36,9 +39,8 @@ function onboardingPayload(user, passwordMatchesDefault = false) {
     }
 }
 
-async function generateRefreshToken(userId) {
+async function generateRefreshToken(userId, expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000)) {
     const token = crypto.randomBytes(40).toString('hex')
-    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
     await prisma.refreshToken.create({
         data: { token, userId, expiresAt }
     })
@@ -102,8 +104,9 @@ router.post('/login', [
         JWT_SECRET,   
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     )
-    const refreshToken = await generateRefreshToken(existingUser.id)
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, REFRESH_COOKIE_OPTIONS)
+    const refreshExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000)
+    const refreshToken = await generateRefreshToken(existingUser.id, refreshExpiresAt)
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions(refreshExpiresAt))
     return success(res, {
         token,
         user: {
@@ -163,8 +166,8 @@ router.post('/refresh', asyncHandler(async (req, res) => {
         JWT_SECRET,
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     )
-    const newRefreshToken = await generateRefreshToken(user.id)
-    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, REFRESH_COOKIE_OPTIONS)
+    const newRefreshToken = await generateRefreshToken(user.id, stored.expiresAt)
+    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, refreshCookieOptions(stored.expiresAt))
 
     return success(res, {
         token: newAccessToken,
@@ -198,7 +201,7 @@ router.post('/logout', asyncHandler(async (req, res) => {
             data: { revoked: true }
         })
     }
-    res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' })
+    res.clearCookie(REFRESH_COOKIE_NAME, { ...REFRESH_COOKIE_OPTIONS })
     return success(res, null, 'Logged out successfully')
 }))
 
