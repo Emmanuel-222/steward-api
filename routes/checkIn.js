@@ -51,9 +51,9 @@ function getMeetingCutoff(meeting) {
 }
 
 const checkInLimiter = rateLimit({
-    windowMs: 30 * 1000,
-    max: 50,
-    message: { success: false, message: 'Too many check-in attempts. Try again in 30 seconds.' },
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { success: false, message: 'Too many check-in attempts. Try again in 15 minutes.' },
     standardHeaders: true,
     legacyHeaders: false,
 })

@@ -28,9 +28,9 @@ app.use(cors({
 }))
 
 const loginLimiter = rateLimit({
-  windowMs: 30 * 1000,
-  max: 50,
-  message: { success: false, message: 'Too many login attempts. Try again in 30 seconds.' },
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 })
@@ -52,7 +52,9 @@ app.get('/api-docs.json', (req, res) => {
     res.send(swaggerSpec)
 })
 
-app.use('/auth', loginLimiter, authRoutes)
+app.use('/auth/login', loginLimiter)
+app.use('/auth/forgot-password', loginLimiter)
+app.use('/auth', authRoutes)
 app.use('/users', userRoutes)
 app.use('/meetings', meetingRoutes)
 app.use('/attendance', attendanceRoutes)
