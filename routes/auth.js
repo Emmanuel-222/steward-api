@@ -317,22 +317,26 @@ router.patch('/onboarding', authenticate, [
     }
 
     if (!user.emailVerified) {
-        const record = await prisma.verificationCode.findFirst({
-            where: { userId: user.id, consumed: false },
-            orderBy: { createdAt: 'desc' },
-        })
-        if (!record || record.expiresAt < new Date()) {
-            throw new AppError('Invalid or expired code', 400)
-        }
-        if (record.attempts >= 5) {
-            throw new AppError('Too many attempts. Request a new code.', 400)
-        }
-        if (typeof code !== 'string' || !(await bcrypt.compare(code, record.codeHash))) {
-            await prisma.verificationCode.update({
-                where: { id: record.id },
-                data: { attempts: { increment: 1 } },
+        const devOtp = process.env.DEV_OTP
+        const isDevBypass = Boolean(devOtp) && typeof code === 'string' && code === devOtp
+        if (!isDevBypass) {
+            const record = await prisma.verificationCode.findFirst({
+                where: { userId: user.id, consumed: false },
+                orderBy: { createdAt: 'desc' },
             })
-            throw new AppError('Invalid or expired code', 400)
+            if (!record || record.expiresAt < new Date()) {
+                throw new AppError('Invalid or expired code', 400)
+            }
+            if (record.attempts >= 5) {
+                throw new AppError('Too many attempts. Request a new code.', 400)
+            }
+            if (typeof code !== 'string' || !(await bcrypt.compare(code, record.codeHash))) {
+                await prisma.verificationCode.update({
+                    where: { id: record.id },
+                    data: { attempts: { increment: 1 } },
+                })
+                throw new AppError('Invalid or expired code', 400)
+            }
         }
     }
 
