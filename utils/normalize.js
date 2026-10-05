@@ -1,4 +1,4 @@
-const ROLES = ['steward', 'leader', 'pastor', 'admin']
+const ROLES = ['steward', 'leader', 'pastor', 'admin', 'trainee']
 
 const DEPARTMENTS = [
   'children dept.',
