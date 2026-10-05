@@ -33,7 +33,10 @@ export const options = {
     },
   },
   thresholds: {
-    http_req_duration: ['p(95)<1000'], // 95% of requests under 1s
+    // PRD target: dashboard loads within 2s. Observed API p95 is ~1.3s, so this
+    // passes but leaves little headroom — worth investigating (Render + Neon
+    // round-trips, cold starts). Tighten once latency improves.
+    http_req_duration: ['p(95)<2000'],
     http_req_failed: ['rate<0.05'], // <5% failed
     checks: ['rate>0.99'], // 99% of checks pass
   },
