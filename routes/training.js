@@ -262,6 +262,7 @@ router.get('/me/classes', authenticate, asyncHandler(async (req, res) => {
 
   return success(res, classes.map((c) => ({
     id: c.id,
+    meetingId: c.meetingId,
     date: c.meeting.date,
     startTime: c.meeting.startTime,
     endTime: c.meeting.endTime,
