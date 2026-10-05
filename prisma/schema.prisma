@@ -20,7 +20,7 @@ model User {
   email         String         @unique
   phone         String
   department    String
-  role          String         // "admin", "pastor", "leader", "steward"
+  role          String         // "admin", "pastor", "leader", "steward", "trainee"
   password      String
   birthday      DateTime?      // optional, DD/MM/YYYY, UTC midnight
   emailVerified       Boolean            @default(true)
@@ -29,6 +29,8 @@ model User {
   excuses       ExcuseRequest[]
   refreshTokens RefreshToken[]
   verificationCodes   VerificationCode[]
+  teachingCohorts     TrainingCohort[]      @relation("teacher")
+  enrollments         TrainingEnrollment[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -55,6 +57,7 @@ model Meeting {
   status      String       @default("Ongoing") // "Ongoing", "Finalized"
   attendance  Attendance[]
   excuses     ExcuseRequest[]
+  trainingClass TrainingClass?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -99,4 +102,58 @@ model VerificationCode {
   createdAt  DateTime @default(now())
 
   @@index([userId])
+}
+
+model TrainingCohort {
+  id               Int      @id @default(autoincrement())
+  name             String
+  startDate        DateTime
+  weekCount        Int
+  teacherId        Int
+  teacher          User     @relation("teacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  maxMissedClasses Int      @default(3)
+  status           String   @default("active")
+  enrollments      TrainingEnrollment[]
+  topics           TrainingTopic[]
+  classes          TrainingClass[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TrainingEnrollment {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  cohortId    Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cohort      TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  status      String   @default("enrolled")
+  graduatedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, cohortId])
+}
+
+model TrainingTopic {
+  id          Int      @id @default(autoincrement())
+  cohortId    Int
+  cohort      TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  weekNumber  Int
+  title       String
+  description String?
+  notes       String?
+  classes     TrainingClass[]
+  createdAt   DateTime @default(now())
+
+  @@unique([cohortId, weekNumber])
+}
+
+model TrainingClass {
+  id        Int      @id @default(autoincrement())
+  cohortId  Int
+  topicId   Int?
+  meetingId Int      @unique
+  cohort    TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  topic     TrainingTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
 }
