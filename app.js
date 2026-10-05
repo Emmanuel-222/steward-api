@@ -45,6 +45,7 @@ const userRoutes = require('./routes/users')
 const meetingRoutes = require('./routes/meetings')
 const attendanceRoutes = require('./routes/attendance')
 const checkInRoutes = require('./routes/checkIn')
+const trainingRoutes = require('./routes/training')
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec))
 app.get('/api-docs.json', (req, res) => {
@@ -59,6 +60,7 @@ app.use('/users', userRoutes)
 app.use('/meetings', meetingRoutes)
 app.use('/attendance', attendanceRoutes)
 app.use('/attendance', checkInRoutes)
+app.use('/training', trainingRoutes)
 
 app.use(notFound)
 app.use(errorHandler)
