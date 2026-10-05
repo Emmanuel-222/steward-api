@@ -364,6 +364,7 @@ router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async
  */
 router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req, res) => {
     if (!req.file) throw new AppError('CSV file is required (field name: "file")', 400)
+    const cohortId = req.body.cohortId ? Number(req.body.cohortId) : null
     const { validRows, failures, corrections } = parseCsvUsers(req.file.buffer.toString('utf8'))
 
     const emails = validRows.map(row => row.email)
@@ -383,9 +384,10 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
     }
 
     let imported = 0
+    let enrolled = 0
     if (toCreate.length > 0) {
         const hashedPassword = await bcrypt.hash(DEFAULT_PASSWORD, 10)
-        await prisma.$transaction(toCreate.map(row => prisma.user.create({
+        const created = await prisma.$transaction(toCreate.map(row => prisma.user.create({
             data: {
                 fullName: row.fullName,
                 email: row.email,
@@ -398,11 +400,25 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
                 mustChangePassword: true,
             },
         })))
-        imported = toCreate.length
+        imported = created.length
+
+        if (cohortId) {
+            const traineeIds = created
+                .filter((user) => String(user.role).toLowerCase() === 'trainee')
+                .map((user) => user.id)
+            if (traineeIds.length > 0) {
+                await prisma.trainingEnrollment.createMany({
+                    data: traineeIds.map((userId) => ({ userId, cohortId })),
+                    skipDuplicates: true,
+                })
+                enrolled = traineeIds.length
+            }
+        }
     }
 
     return success(res, {
         imported,
+        enrolled,
         skipped: failures.length,
         defaultPassword: DEFAULT_PASSWORD,
         failures,
