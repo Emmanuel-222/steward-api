@@ -19,6 +19,8 @@ import { check, sleep, fail } from 'k6'
 const BASE = __ENV.BASE_URL || 'https://steward-api-nlga.onrender.com'
 const EMAIL = __ENV.STEWARD_EMAIL
 const PASSWORD = __ENV.STEWARD_PASSWORD
+const TARGET_VUS = Number(__ENV.VUS || 20)
+const HOLD = __ENV.HOLD || '20s'
 
 export const options = {
   scenarios: {
@@ -26,9 +28,9 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-        { duration: '5s', target: 3 }, // ramp up to 3 virtual users
-        { duration: '15s', target: 3 }, // hold
-        { duration: '5s', target: 0 }, // ramp down
+        { duration: '10s', target: TARGET_VUS }, // ramp up
+        { duration: HOLD, target: TARGET_VUS }, // hold
+        { duration: '10s', target: 0 }, // ramp down
       ],
     },
   },
