@@ -29,7 +29,7 @@ model User {
   excuses       ExcuseRequest[]
   refreshTokens RefreshToken[]
   verificationCodes   VerificationCode[]
-  teachingCohorts     TrainingCohort[]      @relation("teacher")
+  taughtTopics        TrainingTopic[]       @relation("topicTeacher")
   enrollments         TrainingEnrollment[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -109,8 +109,6 @@ model TrainingCohort {
   name             String
   startDate        DateTime
   weekCount        Int
-  teacherId        Int
-  teacher          User     @relation("teacher", fields: [teacherId], references: [id], onDelete: Cascade)
   maxMissedClasses Int      @default(3)
   status           String   @default("active")
   enrollments      TrainingEnrollment[]
@@ -141,6 +139,8 @@ model TrainingTopic {
   title       String
   description String?
   notes       String?
+  teacherId   Int?
+  teacher     User?    @relation("topicTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
   classes     TrainingClass[]
   createdAt   DateTime @default(now())
 

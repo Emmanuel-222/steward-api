@@ -47,24 +47,23 @@ router.get('/cohorts', authenticate, isAdmin, asyncHandler(async (_req, res) => 
   const cohorts = await prisma.trainingCohort.findMany({
     orderBy: { startDate: 'desc' },
     include: {
-      teacher: { select: { id: true, fullName: true } },
-      _count: { select: { enrollments: true } },
+      _count: { select: { enrollments: true, topics: true } },
+      topics: { select: { teacherId: true, teacher: { select: { id: true, fullName: true } } } },
     },
   })
   return success(res, cohorts)
 }))
 
 router.post('/cohorts', authenticate, isAdmin, asyncHandler(async (req, res) => {
-  const { name, startDate, weekCount, teacherId, maxMissedClasses = 3 } = req.body
-  if (!name || !startDate || !weekCount || !teacherId) {
-    throw new AppError('name, startDate, weekCount and teacherId are required', 400)
+  const { name, startDate, weekCount, maxMissedClasses = 3 } = req.body
+  if (!name || !startDate || !weekCount) {
+    throw new AppError('name, startDate and weekCount are required', 400)
   }
   const cohort = await prisma.trainingCohort.create({
     data: {
       name,
       startDate: new Date(startDate),
       weekCount: Number(weekCount),
-      teacherId: Number(teacherId),
       maxMissedClasses: Number(maxMissedClasses),
     },
   })
@@ -75,8 +74,7 @@ router.get('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res) 
   const cohort = await prisma.trainingCohort.findUnique({
     where: { id: Number(req.params.id) },
     include: {
-      teacher: { select: { id: true, fullName: true } },
-      topics: { orderBy: { weekNumber: 'asc' } },
+      topics: { orderBy: { weekNumber: 'asc' }, include: { teacher: { select: { id: true, fullName: true } } } },
       _count: { select: { enrollments: true, classes: true } },
     },
   })
@@ -85,12 +83,11 @@ router.get('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res) 
 }))
 
 router.patch('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
-  const { name, startDate, weekCount, teacherId, maxMissedClasses, status } = req.body
+  const { name, startDate, weekCount, maxMissedClasses, status } = req.body
   const data = {}
   if (name !== undefined) data.name = name
   if (startDate !== undefined) data.startDate = new Date(startDate)
   if (weekCount !== undefined) data.weekCount = Number(weekCount)
-  if (teacherId !== undefined) data.teacherId = Number(teacherId)
   if (maxMissedClasses !== undefined) data.maxMissedClasses = Number(maxMissedClasses)
   if (status !== undefined) data.status = status
   const cohort = await prisma.trainingCohort.update({
@@ -103,12 +100,13 @@ router.patch('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res
 // --- topics ---
 router.post('/cohorts/:id/topics', authenticate, isAdmin, asyncHandler(async (req, res) => {
   const cohortId = Number(req.params.id)
-  const { weekNumber, title, description, notes } = req.body
+  const { weekNumber, title, description, notes, teacherId } = req.body
   if (!weekNumber || !title) throw new AppError('weekNumber and title are required', 400)
+  const teacherValue = teacherId ? Number(teacherId) : null
   const topic = await prisma.trainingTopic.upsert({
     where: { cohortId_weekNumber: { cohortId, weekNumber: Number(weekNumber) } },
-    update: { title, description, notes },
-    create: { cohortId, weekNumber: Number(weekNumber), title, description, notes },
+    update: { title, description, notes, teacherId: teacherValue },
+    create: { cohortId, weekNumber: Number(weekNumber), title, description, notes, teacherId: teacherValue },
   })
   return success(res, topic, 'Topic saved')
 }))
@@ -280,5 +278,64 @@ function byCourseStatus(raw) {
   if (s === 'excused') return 'Excused'
   return 'Absent'
 }
+
+// --- teacher view ---
+router.get('/teaching', authenticate, asyncHandler(async (req, res) => {
+  const userId = req.user.userId
+  const classes = await prisma.trainingClass.findMany({
+    where: { topic: { teacherId: userId } },
+    include: { meeting: true, topic: true, cohort: { select: { id: true, name: true } } },
+    orderBy: { meeting: { date: 'desc' } },
+  })
+  const reshaped = classes.map((c) => ({
+    classId: c.id,
+    meetingId: c.meetingId,
+    cohortId: c.cohortId,
+    cohortName: c.cohort.name,
+    topic: c.topic ? c.topic.title : null,
+    week: c.topic ? c.topic.weekNumber : null,
+    date: c.meeting.date,
+    startTime: c.meeting.startTime,
+    endTime: c.meeting.endTime,
+    location: c.meeting.location,
+  }))
+  return success(res, { isTeacher: reshaped.length > 0, classes: reshaped })
+}))
+
+router.get('/classes/:classId/roster', authenticate, asyncHandler(async (req, res) => {
+  const classId = Number(req.params.classId)
+  const cls = await prisma.trainingClass.findUnique({
+    where: { id: classId },
+    include: { topic: true, cohort: true },
+  })
+  if (!cls) throw new AppError('Class not found', 404)
+
+  const callerId = req.user.userId
+  const callerRole = String(req.user.role || '').toLowerCase()
+  const isTeacher = cls.topic && cls.topic.teacherId === callerId
+  if (callerRole !== 'admin' && !isTeacher) {
+    throw new AppError('Not authorized to view this class roster', 403)
+  }
+
+  const enrollments = await prisma.trainingEnrollment.findMany({
+    where: { cohortId: cls.cohortId, status: { in: ['enrolled', 'graduated'] } },
+    include: { user: { select: { id: true, fullName: true } } },
+  })
+  const records = await prisma.attendance.findMany({ where: { meetingId: cls.meetingId } })
+  const byUser = new Map(records.map((r) => [r.userId, r.status]))
+
+  return success(res, {
+    classId: cls.id,
+    meetingId: cls.meetingId,
+    cohortName: cls.cohort.name,
+    topic: cls.topic ? cls.topic.title : null,
+    week: cls.topic ? cls.topic.weekNumber : null,
+    roster: enrollments.map((e) => ({
+      userId: e.userId,
+      name: e.user.fullName,
+      status: byUser.get(e.userId) || 'Unmarked',
+    })),
+  })
+}))
 
 module.exports = router

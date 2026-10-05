@@ -100,7 +100,7 @@ const resolveExcuseValidation = [
  *       404:
  *         description: User or meeting not found
  */
-router.post('/', authenticate, isAuthorized(['admin', 'pastor']), markAttendanceValidation, asyncHandler(async (req, res) => {
+router.post('/', authenticate, markAttendanceValidation, asyncHandler(async (req, res) => {
     const { userId, meetingId, status } = req.body
     const { role, department } = req.user
     
@@ -109,6 +109,18 @@ router.post('/', authenticate, isAuthorized(['admin', 'pastor']), markAttendance
     
     const meeting = await prisma.meeting.findUnique({ where: { id: Number(meetingId) } })
     if (!meeting) throw new AppError("Meeting not found", 404)
+
+    const callerRole = String(role || '').toLowerCase()
+    if (!['admin', 'pastor'].includes(callerRole)) {
+        const trainingClass = await prisma.trainingClass.findUnique({
+            where: { meetingId: Number(meetingId) },
+            include: { topic: true },
+        })
+        const isTeacher = Boolean(
+            trainingClass && trainingClass.topic && trainingClass.topic.teacherId === req.user.userId,
+        )
+        if (!isTeacher) throw new AppError('Not authorized to mark attendance', 403)
+    }
 
     let finalStatus = status || "present"
     if (finalStatus === "present") {
