@@ -100,6 +100,21 @@ router.patch('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res
   return success(res, cohort, 'Cohort updated')
 }))
 
+router.delete('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res) => {
+  const cohortId = Number(req.params.id)
+  const cohort = await prisma.trainingCohort.findUnique({
+    where: { id: cohortId },
+    include: { classes: { select: { meetingId: true } } },
+  })
+  if (!cohort) throw new AppError('Cohort not found', 404)
+  const meetingIds = cohort.classes.map((c) => c.meetingId)
+  await prisma.trainingCohort.delete({ where: { id: cohortId } })
+  if (meetingIds.length) {
+    await prisma.meeting.deleteMany({ where: { id: { in: meetingIds } } })
+  }
+  return success(res, null, 'Cohort deleted')
+}))
+
 // --- topics ---
 router.post('/cohorts/:id/topics', authenticate, isAdmin, asyncHandler(async (req, res) => {
   const cohortId = Number(req.params.id)
