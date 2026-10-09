@@ -40,6 +40,7 @@ function parseCsvUsers(csvText) {
         const departmentRaw = get(cells, 'department')
         const birthdayRaw = get(cells, 'birthday')
         const roleRaw = get(cells, 'role')
+        const trackRaw = get(cells, 'track')
 
         let role = 'steward'
         if (roleRaw) {
@@ -86,7 +87,11 @@ function parseCsvUsers(csvText) {
         const rowHasErrors = failures.some(f => f.row === line)
         if (!rowHasErrors) {
             seenEmails.add(email)
-            validRows.push({ line, fullName, email, phone, department: department.value, role, birthday: birthdayRaw ? parseBirthday(birthdayRaw) : null })
+            validRows.push({
+                line, fullName, email, phone, department: department.value, role,
+                birthday: birthdayRaw ? parseBirthday(birthdayRaw) : null,
+                track: /^refresh/i.test(trackRaw) ? 'refresher' : 'new',
+            })
         }
     })
     return { validRows, failures, corrections }

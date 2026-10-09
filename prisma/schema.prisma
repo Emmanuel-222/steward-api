@@ -124,6 +124,7 @@ model TrainingEnrollment {
   cohortId    Int
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   cohort      TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  track       String   @default("new") // "new" | "refresher"
   status      String   @default("enrolled")
   graduatedAt DateTime?
   createdAt   DateTime @default(now())
@@ -136,15 +137,20 @@ model TrainingTopic {
   cohortId    Int
   cohort      TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   weekNumber  Int
+  day         String   @default("Sunday")
+  startTime   String?
+  endTime     String?
   title       String
   description String?
   notes       String?
+  requiredForNew        Boolean @default(true)
+  requiredForRefresher  Boolean @default(false)
   teacherId   Int?
   teacher     User?    @relation("topicTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
   classes     TrainingClass[]
   createdAt   DateTime @default(now())
 
-  @@unique([cohortId, weekNumber])
+  @@unique([cohortId, weekNumber, startTime])
 }
 
 model TrainingClass {
