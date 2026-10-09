@@ -7,6 +7,7 @@ const asyncHandler = require('../utils/asyncHandler')
 const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
 const { computeGraduationStatus, sessionDate } = require('../utils/training')
+const { WIT_CURRICULUM } = require('../utils/witCurriculum')
 
 async function missedForCohort(cohortId, userId, track = 'new') {
   const topicFilter = track === 'refresher'
@@ -152,6 +153,34 @@ router.post('/cohorts/:id/generate', authenticate, isAdmin, asyncHandler(async (
     created += 1
   }
   return success(res, { created }, `Generated ${created} session(s)`)
+}))
+
+router.post('/cohorts/:id/seed-curriculum', authenticate, isAdmin, asyncHandler(async (req, res) => {
+  const cohortId = Number(req.params.id)
+  const cohort = await prisma.trainingCohort.findUnique({ where: { id: cohortId } })
+  if (!cohort) throw new AppError('Cohort not found', 404)
+  let created = 0
+  for (const s of WIT_CURRICULUM) {
+    const exists = await prisma.trainingTopic.findFirst({
+      where: { cohortId, weekNumber: s.weekNumber, startTime: s.startTime },
+    })
+    if (exists) continue
+    await prisma.trainingTopic.create({
+      data: {
+        cohortId,
+        weekNumber: s.weekNumber,
+        day: 'Sunday',
+        startTime: s.startTime,
+        endTime: s.endTime,
+        title: s.title,
+        notes: s.teacher ? `Teacher: ${s.teacher}` : null,
+        requiredForNew: true,
+        requiredForRefresher: Boolean(s.requiredForRefresher),
+      },
+    })
+    created += 1
+  }
+  return success(res, { created }, `Loaded ${created} standard session(s)`)
 }))
 
 router.delete('/topics/:topicId', authenticate, isAdmin, asyncHandler(async (req, res) => {

@@ -7,6 +7,10 @@ const prisma = new PrismaClient()
 
 async function main() {
   console.log('Wiping all tables...')
+  await prisma.$executeRaw`DELETE FROM "TrainingClass"`
+  await prisma.$executeRaw`DELETE FROM "TrainingTopic"`
+  await prisma.$executeRaw`DELETE FROM "TrainingEnrollment"`
+  await prisma.$executeRaw`DELETE FROM "TrainingCohort"`
   await prisma.$executeRaw`DELETE FROM "VerificationCode"`
   await prisma.$executeRaw`DELETE FROM "RefreshToken"`
   await prisma.$executeRaw`DELETE FROM "Attendance"`
