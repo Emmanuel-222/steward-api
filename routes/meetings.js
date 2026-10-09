@@ -61,6 +61,7 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
 
     const [meetings, total] = await Promise.all([
         prisma.meeting.findMany({
+            where: { type: { not: 'Training' } },
             skip,
             take,
             orderBy: { date: 'desc' },
@@ -70,7 +71,7 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
                 }
             }
         }),
-        page ? prisma.meeting.count() : Promise.resolve(0),
+        page ? prisma.meeting.count({ where: { type: { not: 'Training' } } }) : Promise.resolve(0),
     ])
 
     const meetingsWithCounts = meetings.map(meeting => {
