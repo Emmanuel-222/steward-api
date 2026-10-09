@@ -1,5 +1,8 @@
 const express = require('express')
 const router = express.Router()
+const multer = require('multer')
+const bcrypt = require('bcrypt')
+const validator = require('validator')
 const { prisma } = require('../prisma')
 const authenticate = require('../middleware/authenticate')
 const isAdmin = require('../middleware/isAdmin')
@@ -8,6 +11,27 @@ const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
 const { computeGraduationStatus, sessionDate } = require('../utils/training')
 const { WIT_CURRICULUM } = require('../utils/witCurriculum')
+const { parseCsvTrainees } = require('../utils/csvImport')
+const { normalizePhone } = require('../utils/normalize')
+const { DEFAULT_PASSWORD } = require('../utils/constants')
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const isCsv = file.mimetype === 'text/csv' || file.originalname.toLowerCase().endsWith('.csv')
+    cb(isCsv ? null : new AppError('Only CSV files are allowed', 400), isCsv)
+  },
+})
+function uploadCsv(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next()
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return next(new AppError('File too large — max 1MB', 400))
+    }
+    next(err)
+  })
+}
 
 async function missedForCohort(cohortId, userId, track = 'new') {
   const topicFilter = track === 'refresher'
@@ -277,6 +301,102 @@ router.post('/cohorts/:id/trainees/:userId/graduate', authenticate, isAdmin, asy
     prisma.user.update({ where: { id: userId }, data: { role: 'steward' } }),
   ])
   return success(res, null, 'Trainee graduated and moved to worker')
+}))
+
+// --- enrollment: import + add one ---
+router.post('/cohorts/:id/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req, res) => {
+  const cohortId = Number(req.params.id)
+  const cohort = await prisma.trainingCohort.findUnique({ where: { id: cohortId } })
+  if (!cohort) throw new AppError('Cohort not found', 404)
+  if (!req.file) throw new AppError('CSV file is required (field name: "file")', 400)
+
+  const defaultTrack = req.body.track === 'refresher' ? 'refresher' : 'new'
+  const { validRows, failures } = parseCsvTrainees(req.file.buffer.toString('utf8'))
+
+  const emails = validRows.map((r) => r.email)
+  const existing = await prisma.user.findMany({ where: { email: { in: emails } }, select: { email: true } })
+  const existingSet = new Set(existing.map((u) => u.email.toLowerCase()))
+
+  const toCreate = []
+  for (const row of validRows) {
+    if (existingSet.has(row.email)) {
+      failures.push({ row: row.line, field: 'email', message: 'Email already registered' })
+    } else {
+      toCreate.push(row)
+    }
+  }
+
+  let imported = 0
+  if (toCreate.length > 0) {
+    const hashed = await bcrypt.hash(DEFAULT_PASSWORD, 10)
+    const createdUsers = await prisma.$transaction(toCreate.map((row) => prisma.user.create({
+      data: {
+        fullName: row.fullName,
+        email: row.email,
+        phone: row.phone,
+        department: 'Unassigned',
+        role: 'trainee',
+        birthday: row.birthday,
+        password: hashed,
+        emailVerified: false,
+        mustChangePassword: true,
+      },
+    })))
+    await prisma.trainingEnrollment.createMany({
+      data: createdUsers.map((u, i) => ({
+        userId: u.id,
+        cohortId,
+        track: toCreate[i].track || defaultTrack,
+      })),
+      skipDuplicates: true,
+    })
+    imported = createdUsers.length
+  }
+
+  return success(res, {
+    imported,
+    skipped: failures.length,
+    defaultPassword: DEFAULT_PASSWORD,
+    failures,
+  }, 'Trainee import completed')
+}))
+
+router.post('/cohorts/:id/trainees', authenticate, isAdmin, asyncHandler(async (req, res) => {
+  const cohortId = Number(req.params.id)
+  const cohort = await prisma.trainingCohort.findUnique({ where: { id: cohortId } })
+  if (!cohort) throw new AppError('Cohort not found', 404)
+
+  const { fullName, email, phone, track } = req.body
+  if (!fullName || !email || !phone) throw new AppError('Name, email and phone are required', 400)
+  const cleanEmail = String(email).toLowerCase().trim()
+  if (!validator.isEmail(cleanEmail)) throw new AppError('Enter a valid email address', 400)
+  const cleanPhone = normalizePhone(phone)
+  if (!cleanPhone) throw new AppError('Enter a valid Nigerian phone number', 400)
+
+  const existing = await prisma.user.findUnique({ where: { email: cleanEmail } })
+  if (existing) throw new AppError('Email already registered', 409)
+
+  const hashed = await bcrypt.hash(DEFAULT_PASSWORD, 10)
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        fullName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        department: 'Unassigned',
+        role: 'trainee',
+        password: hashed,
+        emailVerified: false,
+        mustChangePassword: true,
+      },
+    })
+    await tx.trainingEnrollment.create({
+      data: { userId: created.id, cohortId, track: track === 'refresher' ? 'refresher' : 'new' },
+    })
+    return created
+  })
+
+  return success(res, { id: user.id }, 'Trainee added')
 }))
 
 // --- self (trainee) ---
