@@ -343,7 +343,7 @@ router.get('/me/classes', authenticate, asyncHandler(async (req, res) => {
     : []
   const excusedSet = new Set(excused.map((e) => e.meetingId))
 
-  return success(res, topics.map((t) => {
+  return success(res, topics.filter(isRequired).map((t) => {
     const cls = t.classes[0]
     const meeting = cls ? cls.meeting : null
     let status = 'Upcoming'
