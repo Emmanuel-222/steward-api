@@ -64,6 +64,7 @@ const autoMarkAbsent = () => {
             // Find all meetings scheduled for today
             const meetings = await prisma.meeting.findMany({
                 where: {
+                    type: { not: 'Training' },
                     date: {
                         gte: todayStart,
                         lt: tomorrowStart

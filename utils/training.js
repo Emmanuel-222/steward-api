@@ -6,4 +6,12 @@ function computeGraduationStatus(missed, maxMissed) {
   return 'on_track'
 }
 
-module.exports = { computeGraduationStatus }
+function sessionDate(startDate, weekNumber) {
+  const base = new Date(startDate)
+  const y = base.getUTCFullYear()
+  const m = base.getUTCMonth()
+  const d = base.getUTCDate()
+  return new Date(Date.UTC(y, m, d + (Number(weekNumber) - 1) * 7))
+}
+
+module.exports = { computeGraduationStatus, sessionDate }

@@ -403,15 +403,20 @@ router.post('/import', authenticate, isAdmin, uploadCsv, asyncHandler(async (req
         imported = created.length
 
         if (cohortId) {
-            const traineeIds = created
-                .filter((user) => String(user.role).toLowerCase() === 'trainee')
-                .map((user) => user.id)
-            if (traineeIds.length > 0) {
-                await prisma.trainingEnrollment.createMany({
-                    data: traineeIds.map((userId) => ({ userId, cohortId })),
-                    skipDuplicates: true,
-                })
-                enrolled = traineeIds.length
+            const enrollments = []
+            created.forEach((user, i) => {
+                if (String(user.role).toLowerCase() === 'trainee') {
+                    const row = toCreate[i]
+                    enrollments.push({
+                        userId: user.id,
+                        cohortId,
+                        track: row && row.track === 'refresher' ? 'refresher' : 'new',
+                    })
+                }
+            })
+            if (enrollments.length > 0) {
+                await prisma.trainingEnrollment.createMany({ data: enrollments, skipDuplicates: true })
+                enrolled = enrollments.length
             }
         }
     }
