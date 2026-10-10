@@ -143,7 +143,17 @@ router.delete('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, re
 router.get('/trainees', authenticate, isAdmin, asyncHandler(async (_req, res) => {
   const enrollments = await prisma.trainingEnrollment.findMany({
     include: {
-      user: { select: { id: true, fullName: true, email: true } },
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          department: true,
+          role: true,
+          phone: true,
+          createdAt: true,
+        },
+      },
       cohort: { select: { id: true, name: true, maxMissedClasses: true } },
     },
     orderBy: { createdAt: 'desc' },
@@ -155,6 +165,10 @@ router.get('/trainees', authenticate, isAdmin, asyncHandler(async (_req, res) =>
       userId: e.userId,
       name: e.user.fullName,
       email: e.user.email,
+      department: e.user.department,
+      role: e.user.role,
+      phone: e.user.phone,
+      createdAt: e.user.createdAt,
       cohortId: e.cohortId,
       cohortName: e.cohort.name,
       track: e.track,
