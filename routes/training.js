@@ -265,14 +265,17 @@ router.post('/cohorts/:id/seed-curriculum', authenticate, isAdmin, asyncHandler(
   const cohortId = Number(req.params.id)
   const cohort = await prisma.trainingCohort.findUnique({ where: { id: cohortId } })
   if (!cohort) throw new AppError('Cohort not found', 404)
-  let created = 0
-  for (const s of WIT_CURRICULUM) {
-    const exists = await prisma.trainingTopic.findFirst({
-      where: { cohortId, weekNumber: s.weekNumber, startTime: s.startTime },
-    })
-    if (exists) continue
-    await prisma.trainingTopic.create({
-      data: {
+
+  const existing = await prisma.trainingTopic.findMany({
+    where: { cohortId },
+    select: { weekNumber: true, startTime: true },
+  })
+  const seen = new Set(existing.map((t) => `${t.weekNumber}|${t.startTime}`))
+  const missing = WIT_CURRICULUM.filter((s) => !seen.has(`${s.weekNumber}|${s.startTime}`))
+
+  if (missing.length > 0) {
+    await prisma.trainingTopic.createMany({
+      data: missing.map((s) => ({
         cohortId,
         weekNumber: s.weekNumber,
         day: 'Sunday',
@@ -282,11 +285,10 @@ router.post('/cohorts/:id/seed-curriculum', authenticate, isAdmin, asyncHandler(
         notes: s.teacher ? `Teacher: ${s.teacher}` : null,
         requiredForNew: true,
         requiredForRefresher: Boolean(s.requiredForRefresher),
-      },
+      })),
     })
-    created += 1
   }
-  return success(res, { created }, `Loaded ${created} standard session(s)`)
+  return success(res, { created: missing.length }, `Loaded ${missing.length} standard session(s)`)
 }))
 
 router.delete('/topics/:topicId', authenticate, isAdmin, asyncHandler(async (req, res) => {
