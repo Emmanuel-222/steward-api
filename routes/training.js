@@ -103,7 +103,7 @@ router.get('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, res) 
   const cohort = await prisma.trainingCohort.findUnique({
     where: { id: Number(req.params.id) },
     include: {
-      topics: { orderBy: { weekNumber: 'asc' }, include: { teacher: { select: { id: true, fullName: true } } } },
+      topics: { orderBy: [{ weekNumber: 'asc' }, { startTime: 'asc' }], include: { teacher: { select: { id: true, fullName: true } } } },
       _count: { select: { enrollments: true, classes: true } },
     },
   })
