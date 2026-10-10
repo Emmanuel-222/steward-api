@@ -14,6 +14,8 @@ const { WIT_CURRICULUM } = require('../utils/witCurriculum')
 const { parseCsvTrainees } = require('../utils/csvImport')
 const { normalizePhone } = require('../utils/normalize')
 const { DEFAULT_PASSWORD } = require('../utils/constants')
+const { sendEmail } = require('../utils/email')
+const { buildAssignmentEmail, buildRemovalEmail } = require('../utils/emailTemplates')
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -234,6 +236,74 @@ router.post('/cohorts/:id/topics', authenticate, isAdmin, asyncHandler(async (re
   return success(res, topic, 'Session saved')
 }))
 
+const TEACHER_ROLES = ['steward', 'leader', 'pastor']
+
+async function sessionEmailContext(cohortName, topic, teacher) {
+  const klass = await prisma.trainingClass.findFirst({
+    where: { topicId: topic.id },
+    include: { meeting: true },
+  })
+  return {
+    teacherName: teacher?.fullName ?? 'Teacher',
+    cohortName,
+    week: topic.weekNumber,
+    topic: topic.title,
+    date: klass?.meeting?.date ? String(klass.meeting.date) : null,
+    startTime: klass?.meeting?.startTime || topic.startTime || '',
+    endTime: klass?.meeting?.endTime || topic.endTime || '',
+    location: klass?.meeting?.location || cohortName,
+  }
+}
+
+router.patch('/topics/:topicId/teacher', authenticate, isAdmin, asyncHandler(async (req, res) => {
+  const topicId = Number(req.params.topicId)
+  const { teacherId } = req.body
+
+  const topic = await prisma.trainingTopic.findUnique({
+    where: { id: topicId },
+    include: {
+      cohort: { select: { name: true } },
+      teacher: { select: { id: true, fullName: true, email: true } },
+    },
+  })
+  if (!topic) throw new AppError('Topic not found', 404)
+
+  let nextTeacher = null
+  if (teacherId !== null && teacherId !== undefined) {
+    nextTeacher = await prisma.user.findUnique({
+      where: { id: Number(teacherId) },
+      select: { id: true, fullName: true, email: true, role: true },
+    })
+    if (!nextTeacher) throw new AppError('Teacher not found', 404)
+    if (!TEACHER_ROLES.includes(nextTeacher.role?.toLowerCase())) {
+      throw new AppError('Only stewards, leaders or pastors can be assigned as teachers', 400)
+    }
+  }
+
+  const previousTeacher = topic.teacher
+  const updated = await prisma.trainingTopic.update({
+    where: { id: topicId },
+    data: { teacherId: nextTeacher ? nextTeacher.id : null },
+    include: { teacher: { select: { id: true, fullName: true } } },
+  })
+
+  const changed = (previousTeacher?.id ?? null) !== (nextTeacher?.id ?? null)
+  if (changed) {
+    if (previousTeacher && previousTeacher.id !== nextTeacher?.id) {
+      sessionEmailContext(topic.cohort.name, topic, previousTeacher)
+        .then((ctx) => sendEmail({ to: previousTeacher.email, ...buildRemovalEmail(ctx) }))
+        .catch(() => {})
+    }
+    if (nextTeacher) {
+      sessionEmailContext(topic.cohort.name, topic, nextTeacher)
+        .then((ctx) => sendEmail({ to: nextTeacher.email, ...buildAssignmentEmail(ctx) }))
+        .catch(() => {})
+    }
+  }
+
+  return success(res, updated, 'Teacher updated')
+}))
+
 router.post('/cohorts/:id/generate', authenticate, isAdmin, asyncHandler(async (req, res) => {
   const cohortId = Number(req.params.id)
   const cohort = await prisma.trainingCohort.findUnique({ where: { id: cohortId } })
@@ -282,7 +352,6 @@ router.post('/cohorts/:id/seed-curriculum', authenticate, isAdmin, asyncHandler(
         startTime: s.startTime,
         endTime: s.endTime,
         title: s.title,
-        notes: s.teacher ? `Teacher: ${s.teacher}` : null,
         requiredForNew: true,
         requiredForRefresher: Boolean(s.requiredForRefresher),
       })),

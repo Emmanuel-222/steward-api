@@ -154,12 +154,23 @@ model TrainingTopic {
 }
 
 model TrainingClass {
-  id        Int      @id @default(autoincrement())
-  cohortId  Int
-  topicId   Int?
-  meetingId Int      @unique
-  cohort    TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  topic     TrainingTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+    id        Int      @id @default(autoincrement())
+    cohortId  Int
+    topicId   Int?
+    meetingId Int      @unique
+    cohort    TrainingCohort @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+    topic     TrainingTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+    meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+    reminders TrainingReminderSent[]
+    createdAt DateTime @default(now())
+}
+
+model TrainingReminderSent {
+    id      Int      @id @default(autoincrement())
+    classId Int
+    class   TrainingClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+    offset  Int      // days before the class: 7, 3, or 1
+    sentAt  DateTime @default(now())
+
+    @@unique([classId, offset])
 }
