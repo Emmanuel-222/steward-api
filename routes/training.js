@@ -151,6 +151,7 @@ router.get('/trainees', authenticate, isAdmin, asyncHandler(async (_req, res) =>
           department: true,
           role: true,
           phone: true,
+          birthday: true,
           createdAt: true,
         },
       },
@@ -168,6 +169,7 @@ router.get('/trainees', authenticate, isAdmin, asyncHandler(async (_req, res) =>
       department: e.user.department,
       role: e.user.role,
       phone: e.user.phone,
+      birthday: e.user.birthday,
       createdAt: e.user.createdAt,
       cohortId: e.cohortId,
       cohortName: e.cohort.name,
@@ -462,6 +464,24 @@ router.post('/cohorts/:id/trainees', authenticate, isAdmin, asyncHandler(async (
   })
 
   return success(res, { id: user.id }, 'Trainee added')
+}))
+
+router.patch('/cohorts/:id/trainees/:userId', authenticate, isAdmin, asyncHandler(async (req, res) => {
+  const cohortId = Number(req.params.id)
+  const userId = Number(req.params.userId)
+  const { track } = req.body
+  if (track !== 'new' && track !== 'refresher') {
+    throw new AppError("track must be 'new' or 'refresher'", 400)
+  }
+  const enrollment = await prisma.trainingEnrollment.findUnique({
+    where: { userId_cohortId: { userId, cohortId } },
+  })
+  if (!enrollment) throw new AppError('Enrollment not found', 404)
+  const updated = await prisma.trainingEnrollment.update({
+    where: { id: enrollment.id },
+    data: { track },
+  })
+  return success(res, updated, 'Track updated')
 }))
 
 // --- self (trainee) ---

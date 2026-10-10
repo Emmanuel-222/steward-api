@@ -480,7 +480,7 @@ router.patch("/:id", authenticate, isAdmin, updateUserValidation, asyncHandler(a
   const normalizedRole = normalizeRole(role || existingUser.role);
   if (!normalizedRole.value) throw new AppError(`Unknown role — did you mean '${normalizedRole.suggestion}'?`, 400);
   const normalizedDepartment = normalizeDepartment(department || existingUser.department);
-  if (!normalizedDepartment.value) throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400);
+  if ((department || existingUser.department) && !normalizedDepartment.value) throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400);
   const phoneToSave = phone ? normalizePhone(phone) : null;
   if (phone && !phoneToSave) throw new AppError('Invalid phone number — use a valid Nigerian number, e.g. 08012345678', 400);
   const birthdayValue =
@@ -491,7 +491,7 @@ router.patch("/:id", authenticate, isAdmin, updateUserValidation, asyncHandler(a
       fullName: fullName !== undefined ? fullName : existingUser.fullName,
       email: email !== undefined ? email.trim().toLowerCase() : existingUser.email,
       phone: phone !== undefined ? phoneToSave : existingUser.phone,
-      department: normalizedDepartment.value,
+      department: normalizedDepartment.value || existingUser.department,
       role: normalizedRole.value,
       birthday: birthdayValue,
     },
