@@ -139,6 +139,57 @@ router.delete('/cohorts/:id', authenticate, isAdmin, asyncHandler(async (req, re
   return success(res, null, 'Cohort deleted')
 }))
 
+// --- top-level Training lists: all trainees, all sessions ---
+router.get('/trainees', authenticate, isAdmin, asyncHandler(async (_req, res) => {
+  const enrollments = await prisma.trainingEnrollment.findMany({
+    include: {
+      user: { select: { id: true, fullName: true, email: true } },
+      cohort: { select: { id: true, name: true, maxMissedClasses: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+  const rows = []
+  for (const e of enrollments) {
+    const missed = await missedForCohort(e.cohortId, e.userId, e.track)
+    rows.push({
+      userId: e.userId,
+      name: e.user.fullName,
+      email: e.user.email,
+      cohortId: e.cohortId,
+      cohortName: e.cohort.name,
+      track: e.track,
+      status: e.status,
+      missed,
+      maxMissedClasses: e.cohort.maxMissedClasses,
+      graduation: computeGraduationStatus(missed, e.cohort.maxMissedClasses),
+    })
+  }
+  return success(res, rows)
+}))
+
+router.get('/sessions', authenticate, isAdmin, asyncHandler(async (_req, res) => {
+  const classes = await prisma.trainingClass.findMany({
+    include: {
+      meeting: true,
+      topic: { include: { teacher: { select: { fullName: true } } } },
+      cohort: { select: { id: true, name: true } },
+    },
+    orderBy: { meeting: { date: 'desc' } },
+  })
+  return success(res, classes.map((c) => ({
+    classId: c.id,
+    cohortId: c.cohortId,
+    cohortName: c.cohort.name,
+    week: c.topic ? c.topic.weekNumber : null,
+    topic: c.topic ? c.topic.title : null,
+    teacher: c.topic && c.topic.teacher ? c.topic.teacher.fullName : null,
+    date: c.meeting.date,
+    startTime: c.meeting.startTime,
+    endTime: c.meeting.endTime,
+    location: c.meeting.location,
+  })))
+}))
+
 // --- topics ---
 router.post('/cohorts/:id/topics', authenticate, isAdmin, asyncHandler(async (req, res) => {
   const cohortId = Number(req.params.id)
