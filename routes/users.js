@@ -102,7 +102,7 @@ router.get("/", authenticate, asyncHandler(async (req, res) => {
   if (req.query.role && typeof req.query.role === 'string') {
     whereClause.role = { equals: req.query.role, mode: 'insensitive' };
   } else {
-    whereClause.role = { not: 'trainee' };
+    whereClause.role = { notIn: ['trainee', 'admin'] };
   }
 
   const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
@@ -160,7 +160,7 @@ router.get("/search/:name", authenticate, asyncHandler(async (req, res) => {
   if (req.query.role && typeof req.query.role === 'string') {
     whereClause = { ...whereClause, role: { equals: req.query.role, mode: 'insensitive' } };
   } else {
-    whereClause = { ...whereClause, role: { not: 'trainee' } };
+    whereClause = { ...whereClause, role: { notIn: ['trainee', 'admin'] } };
   }
 
   const page = req.query.page ? Math.max(1, parseInt(req.query.page)) : null;
