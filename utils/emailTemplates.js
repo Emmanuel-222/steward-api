@@ -19,7 +19,7 @@ function formatSessionDate(value) {
   })
 }
 
-function shell({ title, intro, details, cta }) {
+function shell({ title, intro, details, cta, footer = 'Sent by the Steward Registrar training scheduler.' }) {
   return `<!doctype html>
 <html>
   <body style="margin:0;background:#eef2f9;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f2d52;">
@@ -35,7 +35,7 @@ function shell({ title, intro, details, cta }) {
           ${cta}
         </div>
       </div>
-      <p style="margin:16px 4px 0;font-size:12px;color:#64748b;">Sent by the Steward Registrar training scheduler.</p>
+      <p style="margin:16px 4px 0;font-size:12px;color:#64748b;">${footer}</p>
     </div>
   </body>
 </html>`
@@ -102,4 +102,17 @@ function buildReminderEmail(session, offset) {
   }
 }
 
-module.exports = { buildAssignmentEmail, buildRemovalEmail, buildReminderEmail }
+function buildVerifyEmail({ name, url }) {
+  return {
+    subject: 'Verify your Steward Registrar email',
+    html: shell({
+      title: `Welcome, ${escape(firstName(name))}`,
+      intro: 'Confirm your email address to activate your Steward Registrar account. This link expires in 24 hours.',
+      details: '',
+      cta: `<a href="${url}" style="display:inline-block;background:#0d2d52;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 20px;border-radius:12px;">Verify my email</a>`,
+      footer: 'If you did not create a Steward Registrar account, you can safely ignore this email.',
+    }),
+  }
+}
+
+module.exports = { buildAssignmentEmail, buildRemovalEmail, buildReminderEmail, buildVerifyEmail }

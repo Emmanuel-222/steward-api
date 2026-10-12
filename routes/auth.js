@@ -14,6 +14,8 @@ const { success } = require('../utils/response')
 const { sendEmail } = require('../utils/email')
 const { DEFAULT_PASSWORD } = require('../utils/constants')
 const { buildOnboarding, isWithinRotationGrace } = require('../utils/authSession')
+const { buildVerifyEmail } = require('../utils/emailTemplates')
+const { normalizeDepartment } = require('../utils/normalize')
 
 const JWT_SECRET = process.env.JWT_SECRET
 const ACCESS_TOKEN_EXPIRY = '30m'
@@ -499,6 +501,81 @@ router.post('/reset-password', [
     await revokeOtherRefreshTokens(user.id)
 
     return success(res, null, 'Password reset successful')
+}))
+
+// Self-service signup — creates a steward account pending email verification (public, rate-limited)
+router.post('/signup', [
+    body('firstName').trim().notEmpty().withMessage('First name is required'),
+    body('lastName').trim().notEmpty().withMessage('Last name is required'),
+    body('email').isEmail().withMessage('A valid email is required'),
+    body('department').trim().notEmpty().withMessage('Department is required'),
+    body('password').matches(PASSWORD_POLICY_REGEX).withMessage(PASSWORD_ERROR_MESSAGE),
+    handleValidation,
+], asyncHandler(async (req, res) => {
+    const { firstName, lastName, email, department, password } = req.body
+    const normalizedEmail = email.trim().toLowerCase()
+
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    if (existing) {
+        throw new AppError('An account with that email already exists', 409)
+    }
+
+    const normalizedDepartment = normalizeDepartment(department)
+    if (!normalizedDepartment.value) {
+        throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400)
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+    const user = await prisma.user.create({
+        data: {
+            fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+            email: normalizedEmail,
+            phone: '',
+            department: normalizedDepartment.value,
+            role: 'steward',
+            password: hashedPassword,
+            emailVerified: false,
+            mustChangePassword: false,
+        },
+    })
+
+    const verifyToken = jwt.sign(
+        { userId: user.id, purpose: 'email-verify' },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+    )
+    const verifyUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/verify-email/${verifyToken}`
+    try {
+        await sendEmail({ to: user.email, ...buildVerifyEmail({ name: user.fullName, url: verifyUrl }) })
+    } catch (error) {
+        // The account still exists; the user can verify later from the onboarding screen.
+        console.error('[auth] signup verification email failed:', error.message ?? error)
+    }
+
+    return success(res, { email: user.email }, 'Account created. Check your email to verify it.')
+}))
+
+// Verify a signup email using the token from the verification link (public)
+router.post('/verify-email/:token', asyncHandler(async (req, res) => {
+    let payload
+    try {
+        payload = jwt.verify(req.params.token, JWT_SECRET)
+    } catch {
+        throw new AppError('This verification link is invalid or has expired', 400)
+    }
+
+    if (payload.purpose !== 'email-verify') {
+        throw new AppError('This verification link is invalid', 400)
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } })
+    if (!user) throw new AppError('User not found', 404)
+
+    if (!user.emailVerified) {
+        await prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } })
+    }
+
+    return success(res, null, 'Email verified successfully')
 }))
 
 module.exports = router

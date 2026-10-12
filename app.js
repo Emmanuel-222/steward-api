@@ -9,6 +9,7 @@ const swaggerUi = require('swagger-ui-express')
 const swaggerSpec = require('./swagger')
 const notFound = require('./middleware/notFound')
 const errorHandler = require('./middleware/errorHandler')
+const { verifyOrigin } = require('./middleware/verifyOrigin')
 
 const app = express()
 app.use(helmet())
@@ -27,10 +28,21 @@ app.use(cors({
   credentials: true,
 }))
 
+// CSRF guard for state-changing requests (runs before every route).
+app.use(verifyOrigin)
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many sign-up attempts. Try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 })
@@ -55,6 +67,7 @@ app.get('/api-docs.json', (req, res) => {
 })
 
 app.use('/auth/login', loginLimiter)
+app.use('/auth/signup', signupLimiter)
 app.use('/auth/forgot-password', loginLimiter)
 app.use('/auth', authRoutes)
 app.use('/users', userRoutes)
