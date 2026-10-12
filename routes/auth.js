@@ -15,7 +15,7 @@ const { sendEmail } = require('../utils/email')
 const { DEFAULT_PASSWORD } = require('../utils/constants')
 const { buildOnboarding, isWithinRotationGrace } = require('../utils/authSession')
 const { buildVerifyEmail } = require('../utils/emailTemplates')
-const { normalizeDepartment } = require('../utils/normalize')
+const { normalizePhone } = require('../utils/normalize')
 
 const JWT_SECRET = process.env.JWT_SECRET
 const ACCESS_TOKEN_EXPIRY = '30m'
@@ -503,16 +503,16 @@ router.post('/reset-password', [
     return success(res, null, 'Password reset successful')
 }))
 
-// Self-service signup — creates a steward account pending email verification (public, rate-limited)
+// Self-service signup — creates the church admin account pending email verification (public, rate-limited)
 router.post('/signup', [
     body('firstName').trim().notEmpty().withMessage('First name is required'),
     body('lastName').trim().notEmpty().withMessage('Last name is required'),
     body('email').isEmail().withMessage('A valid email is required'),
-    body('department').trim().notEmpty().withMessage('Department is required'),
+    body('phone').trim().notEmpty().withMessage('Phone number is required'),
     body('password').matches(PASSWORD_POLICY_REGEX).withMessage(PASSWORD_ERROR_MESSAGE),
     handleValidation,
 ], asyncHandler(async (req, res) => {
-    const { firstName, lastName, email, department, password } = req.body
+    const { firstName, lastName, email, phone, password } = req.body
     const normalizedEmail = email.trim().toLowerCase()
 
     const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } })
@@ -520,9 +520,9 @@ router.post('/signup', [
         throw new AppError('An account with that email already exists', 409)
     }
 
-    const normalizedDepartment = normalizeDepartment(department)
-    if (!normalizedDepartment.value) {
-        throw new AppError(`Unknown department — did you mean '${normalizedDepartment.suggestion}'?`, 400)
+    const normalizedPhone = normalizePhone(phone)
+    if (!normalizedPhone) {
+        throw new AppError('Invalid phone number — use a valid Nigerian number, e.g. 08012345678', 400)
     }
 
     const hashedPassword = await bcrypt.hash(password, 10)
@@ -530,9 +530,9 @@ router.post('/signup', [
         data: {
             fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
             email: normalizedEmail,
-            phone: '',
-            department: normalizedDepartment.value,
-            role: 'steward',
+            phone: normalizedPhone,
+            department: 'Admin',
+            role: 'admin',
             password: hashedPassword,
             emailVerified: false,
             mustChangePassword: false,
