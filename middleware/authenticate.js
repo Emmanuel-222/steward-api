@@ -7,7 +7,7 @@ const authenticate = (req, res, next) => {
     const authHeader = req.headers['authorization']
     
     if (!authHeader) {
-        return res.status(401).json({ message: 'No token provided' })
+        return res.status(401).json({ success: false, message: 'No token provided' })
     }
 
     const token = authHeader.split(' ')[1]
@@ -18,12 +18,12 @@ const authenticate = (req, res, next) => {
         next()
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
-            return res.status(401).json({ message: 'Token expired, please login again' })
+            return res.status(401).json({ success: false, message: 'Token expired, please login again' })
         }
         if (err.name === 'JsonWebTokenError') {
-            return res.status(401).json({ message: 'Invalid token' })
+            return res.status(401).json({ success: false, message: 'Invalid token' })
         }
-        return res.status(500).json({ message: 'Something went wrong' })
+        return res.status(500).json({ success: false, message: 'Something went wrong' })
     }
 }
 

@@ -13,6 +13,7 @@ const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
 const { sendEmail } = require('../utils/email')
 const { DEFAULT_PASSWORD } = require('../utils/constants')
+const { buildOnboarding, isWithinRotationGrace } = require('../utils/authSession')
 
 const JWT_SECRET = process.env.JWT_SECRET
 const ACCESS_TOKEN_EXPIRY = '30m'
@@ -29,14 +30,13 @@ function refreshCookieOptions(expiresAt) {
     return { ...REFRESH_COOKIE_OPTIONS, maxAge: Math.max(0, expiresAt.getTime() - Date.now()) }
 }
 
-function onboardingPayload(user, passwordMatchesDefault = false) {
-    const needsEmailVerify = !user.emailVerified
-    const needsPasswordChange = user.mustChangePassword || passwordMatchesDefault
-    return {
-        required: needsEmailVerify || needsPasswordChange,
-        needsEmailVerify,
-        needsPasswordChange,
-    }
+// The default-password check must be applied everywhere onboarding is reported,
+// otherwise a reload (which goes through /auth/refresh) skips the forced change.
+async function onboardingFor(user) {
+    const passwordMatchesDefault = user?.password
+        ? await bcrypt.compare(DEFAULT_PASSWORD, user.password)
+        : false
+    return buildOnboarding(user, passwordMatchesDefault)
 }
 
 async function generateRefreshToken(userId, expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000)) {
@@ -46,6 +46,32 @@ async function generateRefreshToken(userId, expiresAt = new Date(Date.now() + RE
     })
     return token
 }
+
+// Walk the rotation chain (old -> replacedBy -> ...) to the newest token that is still live.
+async function resolveActiveSuccessor(stored) {
+    let current = stored
+    for (let hops = 0; hops < 5; hops += 1) {
+        if (!current.replacedBy) return null
+        const next = await prisma.refreshToken.findUnique({ where: { token: current.replacedBy } })
+        if (!next || next.expiresAt < new Date()) return null
+        if (!next.revoked) return next
+        current = next
+    }
+    return null
+}
+
+// Revoke a user's other sessions (e.g. after a password change) while keeping the current one.
+async function revokeOtherRefreshTokens(userId, keepToken) {
+    await prisma.refreshToken.updateMany({
+        where: {
+            userId,
+            revoked: false,
+            ...(keepToken ? { token: { not: keepToken } } : {}),
+        },
+        data: { revoked: true, revokedAt: new Date() },
+    })
+}
+
 
 /**
  * @swagger
@@ -93,7 +119,6 @@ router.post('/login', [
     if(!passwordMatch) {
         throw new AppError('Invalid credentials', 401)
     }
-    const passwordMatchesDefault = await bcrypt.compare(DEFAULT_PASSWORD, existingUser.password)
     const token = jwt.sign(
         { 
             userId: existingUser.id, 
@@ -115,7 +140,7 @@ router.post('/login', [
             name: existingUser.fullName,
             role: existingUser.role,
             department: existingUser.department,
-            onboarding: onboardingPayload(existingUser, passwordMatchesDefault),
+            onboarding: await onboardingFor(existingUser),
         }
     }, 'Login is successful')
 }))
@@ -138,18 +163,34 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     if (!refreshToken) {
         throw new AppError('Invalid or expired refresh token', 401)
     }
-    const stored = await prisma.refreshToken.findUnique({
+    let stored = await prisma.refreshToken.findUnique({
         where: { token: refreshToken }
     })
-    if (!stored || stored.revoked || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt < new Date()) {
         throw new AppError('Invalid or expired refresh token', 401)
     }
 
-    // Revoke the old token (rotation)
-    await prisma.refreshToken.update({
-        where: { id: stored.id },
-        data: { revoked: true }
-    })
+    let shouldRotate = false
+    if (stored.revoked) {
+        if (!isWithinRotationGrace(stored.revokedAt)) {
+            // Reuse of a token revoked long ago (or by logout) — treat as theft and
+            // revoke the whole family for this user.
+            await prisma.refreshToken.updateMany({
+                where: { userId: stored.userId, revoked: false },
+                data: { revoked: true, revokedAt: new Date() },
+            })
+            throw new AppError('Invalid or expired refresh token', 401)
+        }
+        // Superseded moments ago by a concurrent refresh (e.g. another tab): reuse the
+        // token we already issued instead of failing the request.
+        const successor = await resolveActiveSuccessor(stored)
+        if (!successor) {
+            throw new AppError('Invalid or expired refresh token', 401)
+        }
+        stored = successor
+    } else {
+        shouldRotate = true
+    }
 
     const user = await prisma.user.findUnique({ where: { id: stored.userId } })
     if (!user) {
@@ -166,8 +207,17 @@ router.post('/refresh', asyncHandler(async (req, res) => {
         JWT_SECRET,
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     )
-    const newRefreshToken = await generateRefreshToken(user.id, stored.expiresAt)
-    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, refreshCookieOptions(stored.expiresAt))
+
+    let activeRefreshToken = stored
+    if (shouldRotate) {
+        const issuedToken = await generateRefreshToken(user.id, stored.expiresAt)
+        await prisma.refreshToken.update({
+            where: { id: stored.id },
+            data: { revoked: true, revokedAt: new Date(), replacedBy: issuedToken },
+        })
+        activeRefreshToken = { token: issuedToken, expiresAt: stored.expiresAt }
+    }
+    res.cookie(REFRESH_COOKIE_NAME, activeRefreshToken.token, refreshCookieOptions(activeRefreshToken.expiresAt))
 
     return success(res, {
         token: newAccessToken,
@@ -177,7 +227,7 @@ router.post('/refresh', asyncHandler(async (req, res) => {
             name: user.fullName,
             role: user.role,
             department: user.department,
-            onboarding: onboardingPayload(user),
+            onboarding: await onboardingFor(user),
         }
     }, 'Tokens refreshed')
 }))
@@ -198,7 +248,7 @@ router.post('/logout', asyncHandler(async (req, res) => {
     if (refreshToken) {
         await prisma.refreshToken.updateMany({
             where: { token: refreshToken, revoked: false },
-            data: { revoked: true }
+            data: { revoked: true, revokedAt: new Date() }
         })
     }
     res.clearCookie(REFRESH_COOKIE_NAME, { ...REFRESH_COOKIE_OPTIONS })
@@ -233,7 +283,8 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
         email: user.email,
         name: user.fullName,
         role: user.role,
-        onboarding: onboardingPayload(user),
+        department: user.department,
+        onboarding: await onboardingFor(user),
     })
 }))
 
@@ -263,6 +314,7 @@ router.patch('/change-password', authenticate, [
         where: { id: user.id },
         data: { password: hashedPassword, mustChangePassword: false },
     })
+    await revokeOtherRefreshTokens(user.id, req.cookies[REFRESH_COOKIE_NAME])
 
     return success(res, null, 'Password changed successfully')
 }))
@@ -361,6 +413,7 @@ router.patch('/onboarding', authenticate, [
             data: { password: hashedPassword, emailVerified: true, mustChangePassword: false },
         }),
     ])
+    await revokeOtherRefreshTokens(user.id, req.cookies[REFRESH_COOKIE_NAME])
 
     return success(res, {
         id: user.id,
@@ -368,7 +421,7 @@ router.patch('/onboarding', authenticate, [
         name: user.fullName,
         role: user.role,
         department: user.department,
-        onboarding: onboardingPayload({ emailVerified: true, mustChangePassword: false }),
+        onboarding: buildOnboarding({ emailVerified: true, mustChangePassword: false }, false),
     }, 'Onboarding complete')
 }))
 
@@ -443,6 +496,7 @@ router.post('/reset-password', [
         where: { id: user.id },
         data: { password: hashedPassword, mustChangePassword: false },
     })
+    await revokeOtherRefreshTokens(user.id)
 
     return success(res, null, 'Password reset successful')
 }))

@@ -6,6 +6,7 @@ const isAuthorized = (allowedRoles) => {
     return (req, res, next) => {
         if (!req.user || !allowedRoles.includes(req.user.role?.toLowerCase())) {
             return res.status(403).json({ 
+                success: false,
                 message: `Unauthorized access. Required roles: ${allowedRoles.join(', ')}` 
             })
         }

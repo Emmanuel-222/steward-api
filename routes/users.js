@@ -335,6 +335,7 @@ router.post("/", authenticate, isAdmin, createUserValidation, asyncHandler(async
       department: normalizedDepartment.value,
       role: normalizedRole.value,
       password: hashedPassword,
+      mustChangePassword: password === DEFAULT_PASSWORD,
       birthday: birthday ? parseBirthday(birthday) : null,
     },
   });
