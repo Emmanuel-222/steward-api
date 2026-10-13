@@ -1,4 +1,6 @@
 const ROTATION_GRACE_MS = 60 * 1000
+const SESSION_IDLE_MINUTES = Number(process.env.SESSION_IDLE_MINUTES || 30)
+const SESSION_IDLE_MS = SESSION_IDLE_MINUTES * 60 * 1000
 
 // Whether a user still needs to complete onboarding. The default-password check
 // must be supplied by every caller (login, refresh, /me) or a reload can skip
@@ -20,4 +22,18 @@ function isWithinRotationGrace(revokedAt, now = Date.now()) {
     return now - new Date(revokedAt).getTime() < ROTATION_GRACE_MS
 }
 
-module.exports = { ROTATION_GRACE_MS, buildOnboarding, isWithinRotationGrace }
+// A session is idle if nothing has used its refresh token for the idle window
+// (the app was left open, or the tab was closed).
+function isSessionIdle(lastUsedAt, now = Date.now(), idleMs = SESSION_IDLE_MS) {
+    if (!lastUsedAt) return false
+    return now - new Date(lastUsedAt).getTime() > idleMs
+}
+
+module.exports = {
+    ROTATION_GRACE_MS,
+    SESSION_IDLE_MINUTES,
+    SESSION_IDLE_MS,
+    buildOnboarding,
+    isWithinRotationGrace,
+    isSessionIdle,
+}

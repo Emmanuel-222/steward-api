@@ -13,12 +13,12 @@ const AppError = require('../utils/AppError')
 const { success } = require('../utils/response')
 const { sendEmail } = require('../utils/email')
 const { DEFAULT_PASSWORD } = require('../utils/constants')
-const { buildOnboarding, isWithinRotationGrace } = require('../utils/authSession')
+const { buildOnboarding, isWithinRotationGrace, isSessionIdle } = require('../utils/authSession')
 const { buildVerifyEmail } = require('../utils/emailTemplates')
 const { normalizePhone } = require('../utils/normalize')
 
 const JWT_SECRET = process.env.JWT_SECRET
-const ACCESS_TOKEN_EXPIRY = '30m'
+const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '15m'
 const REFRESH_TOKEN_EXPIRY_DAYS = 7
 const REFRESH_COOKIE_NAME = 'refresh_token'
 const REFRESH_COOKIE_OPTIONS = {
@@ -172,6 +172,16 @@ router.post('/refresh', asyncHandler(async (req, res) => {
         throw new AppError('Invalid or expired refresh token', 401)
     }
 
+    if (isSessionIdle(stored.lastUsedAt)) {
+        // Nothing has used this session for the idle window (app left open, or the
+        // tab closed). End it so a reload can't bring it back.
+        await prisma.refreshToken.updateMany({
+            where: { userId: stored.userId, revoked: false },
+            data: { revoked: true, revokedAt: new Date() },
+        })
+        throw new AppError('Session expired due to inactivity', 401)
+    }
+
     let shouldRotate = false
     if (stored.revoked) {
         if (!isWithinRotationGrace(stored.revokedAt)) {
@@ -219,6 +229,10 @@ router.post('/refresh', asyncHandler(async (req, res) => {
         })
         activeRefreshToken = { token: issuedToken, expiresAt: stored.expiresAt }
     }
+    await prisma.refreshToken.update({
+        where: { token: activeRefreshToken.token },
+        data: { lastUsedAt: new Date() },
+    })
     res.cookie(REFRESH_COOKIE_NAME, activeRefreshToken.token, refreshCookieOptions(activeRefreshToken.expiresAt))
 
     return success(res, {

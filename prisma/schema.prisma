@@ -42,6 +42,7 @@ model RefreshToken {
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt  DateTime
   createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
   revoked    Boolean   @default(false)
   revokedAt  DateTime?
   replacedBy String?

@@ -1,6 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert')
-const { ROTATION_GRACE_MS, buildOnboarding, isWithinRotationGrace } = require('../utils/authSession')
+const { ROTATION_GRACE_MS, SESSION_IDLE_MS, buildOnboarding, isWithinRotationGrace, isSessionIdle } = require('../utils/authSession')
 
 test('buildOnboarding forces a change when the password is still the default', () => {
   const result = buildOnboarding({ emailVerified: true, mustChangePassword: false }, true)
@@ -38,4 +38,24 @@ test('isWithinRotationGrace rejects a long-revoked token', () => {
 test('isWithinRotationGrace rejects a missing revocation timestamp', () => {
   assert.equal(isWithinRotationGrace(null), false)
   assert.equal(isWithinRotationGrace(undefined), false)
+})
+
+test('isSessionIdle is false for a recently used session', () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0)
+  assert.equal(isSessionIdle(new Date(now - 60_000), now), false)
+})
+
+test('isSessionIdle is true past the idle window', () => {
+  const now = Date.UTC(2026, 0, 1, 12, 0, 0)
+  assert.equal(isSessionIdle(new Date(now - SESSION_IDLE_MS - 1), now), true)
+})
+
+test('isSessionIdle treats a closed tab (stale token) as idle', () => {
+  const now = Date.UTC(2026, 0, 2, 9, 0, 0)
+  const yesterday = Date.UTC(2026, 0, 1, 12, 0, 0)
+  assert.equal(isSessionIdle(new Date(yesterday), now), true)
+})
+
+test('isSessionIdle is false when there is no timestamp', () => {
+  assert.equal(isSessionIdle(null), false)
 })
